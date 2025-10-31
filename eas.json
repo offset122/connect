@@ -3,17 +3,14 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true,
-      "appVersionSource": "local"
+      "autoIncrement": true
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true,
-      "appVersionSource": "local"
+      "autoIncrement": true
     },
     "production": {
-      "autoIncrement": true,
-      "appVersionSource": "local"
+      "autoIncrement": true
     }
   }
 }
