@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "hannas-connect-iqookc",
+    "name": "hannas-connect",
     "slug": "hannas-connect-iqookc",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -25,7 +25,8 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.hannas.connect"
+      "package": "com.hannas.connect",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/hannas icon.jpg",
@@ -41,7 +42,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "4d991b28-30b2-45b8-83dc-e5f65677d6b9"
+      }
+    },
+    "owner": "clemooffset"
   }
 }
