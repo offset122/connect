@@ -6,6 +6,7 @@ import { Stack, router } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Message = {
   id: string;
@@ -18,6 +19,7 @@ type Message = {
 };
 
 export default function MessagesScreen() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,19 +29,16 @@ export default function MessagesScreen() {
     try {
       setLoading(true);
       
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      
       if (!user) {
         Alert.alert('Error', 'Please log in to view messages');
+        router.replace('/login');
         return;
       }
 
       setCurrentUserId(user.id);
 
       // Fetch messages where user is either sender or receiver
-      const { data: messagesData, error: messagesError } = await supabase
+      const { data: messagesData, error: messagesError } = await (supabase as any)
         .from('messages')
         .select(`
           id,
@@ -57,7 +56,7 @@ export default function MessagesScreen() {
       // Group messages by conversation (other user)
       const conversationsMap = new Map<string, any>();
       
-      messagesData?.forEach(msg => {
+      messagesData?.forEach((msg: any) => {
         const otherUserId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
         
         if (!conversationsMap.has(otherUserId)) {
@@ -81,7 +80,7 @@ export default function MessagesScreen() {
         return;
       }
 
-      const { data: usersData, error: usersError } = await supabase
+      const { data: usersData, error: usersError } = await (supabase as any)
         .from('users')
         .select('id, first_name, avatar, gender')
         .in('id', userIds);
@@ -89,8 +88,8 @@ export default function MessagesScreen() {
       if (usersError) throw usersError;
 
       // Map conversations with user details
-      const mappedMessages: Message[] = Array.from(conversationsMap.values()).map(conv => {
-        const otherUser = usersData?.find(u => u.id === conv.userId);
+      const mappedMessages: Message[] = Array.from(conversationsMap.values()).map((conv: any) => {
+        const otherUser = usersData?.find((u: any) => u.id === conv.userId);
         
         return {
           id: conv.messageId,

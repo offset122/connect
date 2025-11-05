@@ -13,6 +13,8 @@ type User = {
   username: string | null;
   first_name: string;
   is_active: boolean;
+  is_admin: boolean;
+  is_verified: boolean;
   has_paid: boolean;
   payment_date: string | null;
   created_at: string;
@@ -84,7 +86,7 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -121,7 +123,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -137,7 +139,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   searchInput: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 12,
     fontSize: 14,
@@ -147,7 +149,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -220,6 +222,7 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 12,
     paddingTop: 12,
@@ -228,6 +231,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    minWidth: '45%',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -253,6 +257,27 @@ const styles = StyleSheet.create({
   viewButtonText: {
     color: '#FFFFFF',
   },
+  editButton: {
+    backgroundColor: 'transparent',
+    borderColor: colors.primary,
+  },
+  editButtonText: {
+    color: colors.primary,
+  },
+  renewButton: {
+    backgroundColor: 'transparent',
+    borderColor: '#4CAF50',
+  },
+  renewButtonText: {
+    color: '#4CAF50',
+  },
+  deleteButton: {
+    backgroundColor: 'transparent',
+    borderColor: '#EF5350',
+  },
+  deleteButtonText: {
+    color: '#EF5350',
+  },
   deactivateButtonText: {
     color: '#EF5350',
   },
@@ -275,7 +300,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reportCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -296,16 +321,57 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 8,
   },
+  searchContainer: {
+    marginBottom: 20,
+  },
+  searchButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  mpesaCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 });
 
 export default function AdminDashboardScreen() {
-  const [activeTab, setActiveTab] = useState<'users' | 'reports'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'reports' | 'mpesa'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<'all' | 'paid' | 'unpaid' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [mpesaSearchQuery, setMpesaSearchQuery] = useState('');
+  const [mpesaResults, setMpesaResults] = useState<any[]>([]);
+  const [searchingMpesa, setSearchingMpesa] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -327,7 +393,7 @@ export default function AdminDashboardScreen() {
       return;
     }
 
-    const { data: userData } = await supabase
+    const { data: userData } = await (supabase as any)
       .from('users')
       .select('is_admin')
       .eq('id', user.id)
@@ -345,73 +411,134 @@ export default function AdminDashboardScreen() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     await Promise.all([fetchUsers(), fetchReports()]);
-    setLoading(false);
-  }, []);
+  setLoading(false);
+}, []);
 
-  const fetchUsers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, email, username, first_name, is_active, has_paid, payment_date, created_at, account_expiry')
-        .order('created_at', { ascending: false });
+const searchMpesaTransactions = async () => {
+  if (!mpesaSearchQuery.trim()) {
+    Alert.alert('Error', 'Please enter a search term');
+    return;
+  }
 
-      if (error) throw error;
+  setSearchingMpesa(true);
+  try {
+    const { data, error } = await (supabase as any)
+      .from('user_payments')
+      .select(`
+        id,
+        user_id,
+        amount,
+        currency,
+        status,
+        transaction_id,
+        checkout_request_id,
+        mpesa_receipt,
+        transaction_date,
+        payment_completed,
+        created_at,
+        user:user_id(
+          email,
+          first_name,
+          username,
+          has_paid,
+          payment_status
+        )
+      `)
+      .or(`transaction_id.ilike.%${mpesaSearchQuery}%,checkout_request_id.ilike.%${mpesaSearchQuery}%,mpesa_receipt.ilike.%${mpesaSearchQuery}%`)
+      .order('created_at', { ascending: false });
 
-      setUsers(data || []);
-      
-      // Calculate stats
-      const totalUsers = data?.length || 0;
-      const activeUsers = data?.filter(u => u.is_active).length || 0;
-      const paidUsers = data?.filter(u => u.has_paid).length || 0;
-      const unpaidUsers = data?.filter(u => !u.has_paid).length || 0;
+    if (error) throw error;
 
-      setStats(prev => ({
-        ...prev,
-        totalUsers,
-        activeUsers,
-        paidUsers,
-        unpaidUsers,
-      }));
-    } catch (error: any) {
-      console.error('Error fetching users:', error);
-      Alert.alert('Error', 'Failed to fetch users');
-    }
-  };
+    setMpesaResults(data || []);
+  } catch (error: any) {
+    console.error('Error searching M-Pesa transactions:', error);
+    Alert.alert('Error', 'Failed to search M-Pesa transactions');
+  } finally {
+    setSearchingMpesa(false);
+  }
+};
 
-  const fetchReports = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('reports')
-        .select(`
-          id,
-          reporter_id,
-          reported_user_id,
-          reason,
-          description,
-          status,
-          created_at,
-          reporter:reporter_id(email, username),
-          reported_user:reported_user_id(email, username)
-        `)
-        .order('created_at', { ascending: false });
+const clearMpesaSearch = () => {
+  setMpesaSearchQuery('');
+  setMpesaResults([]);
+};
 
-      if (error) throw error;
+const fetchUsers = async () => {
+  try {
+    const { data, error } = await (supabase as any)
+      .from('users')
+      .select('id, email, username, first_name, is_active, is_admin, is_verified, has_paid, payment_date, created_at, account_expiry')
+      .order('created_at', { ascending: false });
 
-      setReports(data || []);
-      
-      const totalReports = data?.length || 0;
-      const pendingReports = data?.filter(r => r.status === 'pending').length || 0;
+    if (error) throw error;
 
-      setStats(prev => ({
-        ...prev,
-        totalReports,
-        pendingReports,
-      }));
-    } catch (error: any) {
-      console.error('Error fetching reports:', error);
-      Alert.alert('Error', 'Failed to fetch reports');
-    }
-  };
+    setUsers(data || []);
+    
+    // Calculate stats
+    const totalUsers = data?.length || 0;
+    const activeUsers = data?.filter((u: any) => u.is_active).length || 0;
+    const paidUsers = data?.filter((u: any) => u.has_paid).length || 0;
+    const unpaidUsers = data?.filter((u: any) => !u.has_paid).length || 0;
+
+    setStats(prev => ({
+      ...prev,
+      totalUsers,
+      activeUsers,
+      paidUsers,
+      unpaidUsers,
+    }));
+  } catch (error: any) {
+    console.error('Error fetching users:', error);
+    Alert.alert('Error', 'Failed to fetch users');
+  }
+};
+
+const fetchReports = async () => {
+  try {
+    const { data, error } = await (supabase as any)
+      .from('reports')
+      .select(`
+        id,
+        reporter_id,
+        reported_user_id,
+        reason,
+        description,
+        status,
+        created_at,
+        reporter:reporter_id(email, username),
+        reported_user:reported_user_id(email, username)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    setReports(data || []);
+    
+    const totalReports = data?.length || 0;
+    const pendingReports = data?.filter((r: any) => r.status === 'pending').length || 0;
+
+    setStats(prev => ({
+      ...prev,
+      totalReports,
+      pendingReports,
+    }));
+  } catch (error: any) {
+    console.error('Error fetching reports:', error);
+    Alert.alert('Error', 'Failed to fetch reports');
+  }
+};
+
+const formatDateTime = (dateString: string | null) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -439,24 +566,280 @@ export default function AdminDashboardScreen() {
 
   const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
+      console.log('Admin Dashboard: Toggling user status for userId:', userId, 'from:', currentStatus, 'to:', !currentStatus);
+
+      const { data, error } = await (supabase as any)
         .from('users')
-        .update({ is_active: !currentStatus })
-        .eq('id', userId);
+        .update({
+          is_active: !currentStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Admin Dashboard: Error updating user status:', error);
+        throw error;
+      }
 
+      console.log('Admin Dashboard: User status updated successfully:', data);
       Alert.alert('Success', `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       fetchUsers();
     } catch (error: any) {
-      console.error('Error updating user status:', error);
-      Alert.alert('Error', 'Failed to update user status');
+      console.error('Admin Dashboard: Error updating user status:', error);
+      Alert.alert('Error', 'Failed to update user status: ' + error.message);
     }
   };
 
   const viewUserDetails = (userId: string) => {
-    router.push(`/admin/user/${userId}`);
+  router.push(`/admin/user/${userId}`);
+};
+
+const renewAccount = async (userId: string, userEmail: string) => {
+  Alert.alert(
+    'Renew Account',
+    `Renew account for ${userEmail}? This will mark them as paid and active for now.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Renew',
+        onPress: async () => {
+          try {
+            const { error } = await (supabase as any)
+              .from('users')
+              .update({
+                has_paid: true,
+                payment_status: 'completed',
+                is_active: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', userId);
+
+            if (error) throw error;
+
+            Alert.alert('Success', 'Account renewed successfully');
+            fetchUsers();
+          } catch (error: any) {
+            console.error('Error renewing account:', error);
+            Alert.alert('Error', 'Failed to renew account: ' + error.message);
+          }
+        },
+      },
+    ]
+  );
+};
+
+const deleteAccount = async (userId: string, userEmail: string) => {
+  // First get user info to check if they're an admin
+  try {
+    const { data: userData, error: userError } = await (supabase as any)
+      .from('users')
+      .select('is_admin')
+      .eq('id', userId)
+      .single();
+
+    if (userError) throw userError;
+
+    // Prevent deleting admin accounts
+    if (userData?.is_admin) {
+      Alert.alert(
+        'Cannot Delete',
+        'Admin accounts cannot be deleted. Please demote the user first if you need to remove admin privileges.'
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Account',
+      `Are you sure you want to delete ${userEmail}'s account? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await (supabase as any)
+                .from('users')
+                .delete()
+                .eq('id', userId);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Account deleted successfully');
+              fetchUsers();
+            } catch (error: any) {
+              console.error('Error deleting account:', error);
+              Alert.alert('Error', 'Failed to delete account');
+            }
+          },
+        },
+      ]
+    );
+  } catch (error: any) {
+    console.error('Error checking user admin status:', error);
+    Alert.alert('Error', 'Failed to verify user status');
+  }
+};
+
+const editAccount = async (userId: string, userEmail: string) => {
+  console.log('Admin Dashboard: Starting edit account for userId:', userId, 'email:', userEmail);
+
+  // Simple sequential editing for key fields
+  const editEmail = async () => {
+    return new Promise<string>((resolve) => {
+      Alert.prompt(
+        'Edit Email',
+        `Current email: ${userEmail}`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
+          {
+            text: 'Next',
+            onPress: (value: string | undefined) => resolve(value || '')
+          },
+        ],
+        'plain-text',
+        userEmail
+      );
+    });
   };
+
+  const editUsername = async () => {
+    return new Promise<string>((resolve) => {
+      Alert.prompt(
+        'Edit Username',
+        'Enter new username (leave empty to keep current):',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
+          {
+            text: 'Next',
+            onPress: (value: string | undefined) => resolve(value || '')
+          },
+        ],
+        'plain-text'
+      );
+    });
+  };
+
+  const editFirstName = async () => {
+    return new Promise<string>((resolve) => {
+      Alert.prompt(
+        'Edit First Name',
+        'Enter new first name (leave empty to keep current):',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
+          {
+            text: 'Save',
+            onPress: (value: string | undefined) => resolve(value || '')
+          },
+        ],
+        'plain-text'
+      );
+    });
+  };
+
+  try {
+    // Edit email
+    const newEmail = await editEmail();
+    console.log('Admin Dashboard: Email edit result:', newEmail);
+    if (newEmail === '') return; // Cancelled
+
+    // Edit username
+    const newUsername = await editUsername();
+    console.log('Admin Dashboard: Username edit result:', newUsername);
+    if (newUsername === '') return; // Cancelled
+
+    // Edit first name
+    const newFirstName = await editFirstName();
+    console.log('Admin Dashboard: First name edit result:', newFirstName);
+    if (newFirstName === '') return; // Cancelled
+
+    // Prepare update data
+    const updateData: any = { updated_at: new Date().toISOString() };
+
+    if (newEmail && newEmail.trim() && newEmail.trim() !== userEmail) {
+      updateData.email = newEmail.trim();
+    }
+
+    if (newUsername && newUsername.trim()) {
+      updateData.username = newUsername.trim();
+    }
+
+    if (newFirstName && newFirstName.trim()) {
+      updateData.first_name = newFirstName.trim();
+    }
+
+    console.log('Admin Dashboard: Prepared update data:', updateData);
+
+    // Check if there's anything to update
+    if (Object.keys(updateData).length === 1) { // Only updated_at
+      Alert.alert('No Changes', 'No changes were made to the account.');
+      return;
+    }
+
+    console.log('Admin Dashboard: Updating user with data:', updateData);
+    const { data, error } = await (supabase as any)
+      .from('users')
+      .update(updateData)
+      .eq('id', userId)
+      .select();
+
+    if (error) {
+      console.error('Admin Dashboard: Update error:', error);
+      if (error.code === '23505') { // Unique constraint violation
+        if (error.message.includes('email')) {
+          Alert.alert('Error', 'Email address is already in use by another account.');
+        } else if (error.message.includes('username')) {
+          Alert.alert('Error', 'Username is already taken.');
+        } else {
+          Alert.alert('Error', 'Duplicate value entered.');
+        }
+      } else {
+        throw error;
+      }
+      return;
+    }
+
+    console.log('Admin Dashboard: Update successful:', data);
+    Alert.alert('Success', 'Account updated successfully');
+    fetchUsers();
+  } catch (error: any) {
+    console.error('Admin Dashboard: Error updating account:', error);
+    Alert.alert('Error', 'Failed to update account: ' + error.message);
+  }
+};
+
+const verifyUserEmail = async (userId: string, userEmail: string) => {
+  Alert.alert(
+    'Verify User Email',
+    `Mark ${userEmail}'s email as verified? This will allow them to access the full app.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Verify',
+        onPress: async () => {
+          try {
+            const { error } = await (supabase as any)
+              .from('users')
+              .update({
+                is_verified: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', userId);
+
+            if (error) throw error;
+
+            Alert.alert('Success', 'User email verified successfully');
+            fetchUsers();
+          } catch (error: any) {
+            console.error('Error verifying user email:', error);
+            Alert.alert('Error', 'Failed to verify user email');
+          }
+        },
+      },
+    ]
+  );
+};
 
   const getFilteredUsers = () => {
     let filtered = users;
@@ -560,6 +943,14 @@ export default function AdminDashboardScreen() {
             Reports
           </Text>
         </Pressable>
+        <Pressable
+          style={[styles.tab, activeTab === 'mpesa' && styles.activeTab]}
+          onPress={() => setActiveTab('mpesa')}
+        >
+          <Text style={[styles.tabText, activeTab === 'mpesa' && styles.activeTabText]}>
+            M-Pesa Search
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -638,7 +1029,14 @@ export default function AdminDashboardScreen() {
                     <Text style={styles.cardTitle}>
                       {user.first_name || user.username || 'No name'}
                     </Text>
-                    <View style={{ flexDirection: 'row' }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                      {user.is_admin && (
+                        <View style={[styles.badge, { backgroundColor: '#FF9800' }]}>
+                          <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>
+                            Admin
+                          </Text>
+                        </View>
+                      )}
                       <View style={[styles.badge, user.is_active ? styles.badgeActive : styles.badgeInactive]}>
                         <Text style={[styles.badgeText, user.is_active ? styles.badgeTextActive : styles.badgeTextInactive]}>
                           {user.is_active ? 'Active' : 'Inactive'}
@@ -688,18 +1086,53 @@ export default function AdminDashboardScreen() {
                         View Details
                       </Text>
                     </Pressable>
+
                     <Pressable
                       style={[
                         styles.actionButton,
-                        user.is_active ? styles.deactivateButton : styles.activateButton
+                        styles.editButton,
+                        user.is_admin && { opacity: 0.5 } // Dim if user is admin
                       ]}
-                      onPress={() => toggleUserStatus(user.id, user.is_active)}
+                      onPress={() => user.is_admin ?
+                        Alert.alert('Cannot Edit', 'Admin accounts cannot be edited.') :
+                        editAccount(user.id, user.email)
+                      }
                     >
-                      <Text style={[
-                        styles.actionButtonText,
-                        user.is_active ? styles.deactivateButtonText : styles.activateButtonText
-                      ]}>
-                        {user.is_active ? 'Deactivate' : 'Activate'}
+                      <Text style={[styles.actionButtonText, styles.editButtonText]}>
+                        Edit
+                      </Text>
+                    </Pressable>
+
+                    {!user.is_verified && (
+                      <Pressable
+                        style={[styles.actionButton, styles.activateButton]}
+                        onPress={() => verifyUserEmail(user.id, user.email)}
+                      >
+                        <Text style={[styles.actionButtonText, styles.activateButtonText]}>
+                          Verify Email
+                        </Text>
+                      </Pressable>
+                    )}
+                    
+                    <Pressable
+                      style={[styles.actionButton, styles.renewButton]}
+                      onPress={() => renewAccount(user.id, user.email)}
+                    >
+                      <Text style={[styles.actionButtonText, styles.renewButtonText]}>
+                        Renew
+                      </Text>
+                    </Pressable>
+                    
+                    <Pressable
+                      style={[
+                        styles.actionButton,
+                        styles.deleteButton,
+                        user.is_admin && { opacity: 0.5 } // Dim if user is admin
+                      ]}
+                      onPress={() => deleteAccount(user.id, user.email)}
+                    >
+                      <Text style={[styles.actionButtonText, styles.deleteButtonText]}>
+                        Delete
                       </Text>
                     </Pressable>
                   </View>

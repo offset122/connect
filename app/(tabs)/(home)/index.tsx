@@ -54,7 +54,7 @@ export default function DiscoverScreen() {
       setCurrentUserId(user.id);
 
       // Get current user's full profile for matchmaking
-      const { data: currentProfile, error: profileError } = await supabase
+      const { data: currentProfile, error: profileError } = await (supabase as any)
         .from('users')
         .select('*')
         .eq('auth_id', user.id)
@@ -69,7 +69,7 @@ export default function DiscoverScreen() {
       }
 
       // Get existing connections to exclude from discovery
-      const { data: connectionsData } = await supabase
+      const { data: connectionsData } = await (supabase as any)
         .from('connections')
         .select('requester_id, recipient_id, status')
         .or(`requester_id.eq.${currentProfile.id},recipient_id.eq.${currentProfile.id}`);
@@ -81,14 +81,14 @@ export default function DiscoverScreen() {
         if (conn.recipient_id !== currentProfile.id) excludedIds.add(conn.recipient_id);
       });
 
-      // Fetch potential matches (active, paid users not in excluded list)
-      let query = supabase
+      // Fetch potential matches (active users not in excluded list)
+      // For testing, fetch ALL active users regardless of payment status
+      let query = (supabase as any)
         .from('users')
         .select('*')
         .eq('is_active', true)
-        .eq('has_paid', true)
         .not('id', 'in', `(${Array.from(excludedIds).join(',')})`)
-        .limit(20);
+        .limit(50);
 
       const { data: usersData, error: usersError } = await query;
 
@@ -111,7 +111,7 @@ export default function DiscoverScreen() {
           // Check connection status
           let connectionStatus: 'none' | 'pending' | 'accepted' | 'rejected' = 'none';
           try {
-            const { data: connection } = await supabase
+            const { data: connection } = await (supabase as any)
               .from('connections')
               .select('status')
               .or(`and(requester_id.eq.${currentProfile.id},recipient_id.eq.${u.id}),and(requester_id.eq.${u.id},recipient_id.eq.${currentProfile.id})`)
@@ -167,14 +167,14 @@ export default function DiscoverScreen() {
 
   const checkConnectionStatus = async (targetUserId: string) => {
     if (!currentUserId) return 'none';
-    
+
     try {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('connections')
         .select('status')
         .or(`and(requester_id.eq.${currentUserId},recipient_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},recipient_id.eq.${currentUserId})`)
         .single();
-        
+
       return (data?.status as any) || 'none';
     } catch (error) {
       return 'none';
@@ -190,7 +190,7 @@ export default function DiscoverScreen() {
       console.log('Sending connection request to:', targetUser.name);
       
       // Create connection request
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('connections')
         .insert({
           requester_id: currentUserProfile.id,
@@ -216,7 +216,7 @@ export default function DiscoverScreen() {
     const targetUser = users[currentIndex];
     
     try {
-      await supabase
+      await (supabase as any)
         .from('connections')
         .update({ status: 'accepted' })
         .eq('requester_id', targetUser.id)
@@ -236,7 +236,7 @@ export default function DiscoverScreen() {
     const targetUser = users[currentIndex];
     
     try {
-      await supabase
+      await (supabase as any)
         .from('connections')
         .update({ status: 'rejected' })
         .eq('requester_id', targetUser.id)
@@ -378,6 +378,13 @@ export default function DiscoverScreen() {
                 )}
                 
                 {/* Location - Conditional based on country */}
+                {/* Gender */}
+                <View style={styles.genderRow}>
+                  <IconSymbol name="person.fill" size={14} color={colors.textSecondary} />
+                  <Text style={styles.gender}>{currentUser.profileData?.gender || 'Not specified'}</Text>
+                </View>
+
+                {/* Location */}
                 <View style={styles.locationRow}>
                   <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
                   <Text style={styles.location}>
@@ -387,7 +394,7 @@ export default function DiscoverScreen() {
                     }
                   </Text>
                 </View>
-                
+
                 {/* Nationality */}
                 {currentUser.profileData?.nationality && (
                   <View style={styles.nationalityRow}>
@@ -422,25 +429,32 @@ export default function DiscoverScreen() {
                 </View>
               )}
 
-              {/* Connection Actions - Only show for connected users */}
-              {currentUser.connectionStatus === 'accepted' && (
-                <PhoneNumberRequest 
-                  targetUserName={currentUser.name}
-                  targetUserId={currentUser.id}
-                />
-              )}
 
               {/* Connection Actions Component */}
-              <ConnectionActions
-                targetUserName={currentUser.name}
-                targetUserId={currentUser.id}
-                connectionStatus={currentUser.connectionStatus || 'none'}
-                onConnect={handleConnect}
-                onAccept={handleAccept}
-                onDecline={handleDecline}
-                onMessage={handleMessage}
-                onRequestPhoto={handleRequestPhoto}
-              />
+              <View style={styles.actionsRow}>
+                <View style={styles.connectionActionsContainer}>
+                  <ConnectionActions
+                    targetUserName={currentUser.name}
+                    targetUserId={currentUser.id}
+                    connectionStatus={currentUser.connectionStatus || 'none'}
+                    onConnect={handleConnect}
+                    onAccept={handleAccept}
+                    onDecline={handleDecline}
+                    onMessage={handleMessage}
+                    onRequestPhoto={handleRequestPhoto}
+                  />
+                </View>
+
+                {/* Phone Number Request Button */}
+                {currentUser.connectionStatus === 'accepted' && (
+                  <View style={styles.phoneRequestContainer}>
+                    <PhoneNumberRequest
+                      targetUserName={currentUser.name}
+                      targetUserId={currentUser.id}
+                    />
+                  </View>
+                )}
+              </View>
 
               <View style={styles.progressIndicator}>
                 <Text style={styles.progressText}>
@@ -600,6 +614,17 @@ const styles = StyleSheet.create({
   },
   offlineText: {
     color: colors.textSecondary,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  connectionActionsContainer: {
+    flex: 1,
+  },
+  phoneRequestContainer: {
+    flex: 1,
   },
   professionRow: {
     flexDirection: 'row',

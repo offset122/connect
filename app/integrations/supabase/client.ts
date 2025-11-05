@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Database } from './types';
+// @ts-ignore: Missing type declarations for '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
 
 const SUPABASE_URL = "https://dbvsexpcrojtnriqfbwa.supabase.co";
@@ -13,6 +14,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,
   },
 })

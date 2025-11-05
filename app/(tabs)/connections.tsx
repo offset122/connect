@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from "react";
 import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
+import PhoneNumberRequest from "@/components/PhoneNumberRequest";
 
 type ConnectionRequest = {
   id: string;
@@ -44,7 +45,7 @@ export default function ConnectionsScreen() {
       setCurrentUserId(user.id);
 
       // Fetch connections where user is either requester or recipient
-      const { data: connectionsData, error: connectionsError } = await supabase
+      const { data: connectionsData, error: connectionsError } = await (supabase as any)
         .from('connections')
         .select(`
           id,
@@ -60,12 +61,12 @@ export default function ConnectionsScreen() {
 
       // Fetch user details for all connections
       const userIds = new Set<string>();
-      connectionsData?.forEach(conn => {
+      connectionsData?.forEach((conn: any) => {
         if (conn.requester_id !== user.id) userIds.add(conn.requester_id);
         if (conn.recipient_id !== user.id) userIds.add(conn.recipient_id);
       });
 
-      const { data: usersData, error: usersError } = await supabase
+      const { data: usersData, error: usersError } = await (supabase as any)
         .from('users')
         .select('id, first_name, age, county, city, avatar, gender')
         .in('id', Array.from(userIds));
@@ -73,9 +74,9 @@ export default function ConnectionsScreen() {
       if (usersError) throw usersError;
 
       // Map connections with user details
-      const mappedConnections: ConnectionRequest[] = connectionsData?.map(conn => {
+      const mappedConnections: ConnectionRequest[] = connectionsData?.map((conn: any) => {
         const otherUserId = conn.requester_id === user.id ? conn.recipient_id : conn.requester_id;
-        const otherUser = usersData?.find(u => u.id === otherUserId);
+        const otherUser = usersData?.find((u: any) => u.id === otherUserId);
         
         return {
           id: conn.id,
@@ -104,9 +105,9 @@ export default function ConnectionsScreen() {
     try {
       console.log('Accepting connection:', id);
       
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('connections')
-        .update({ 
+        .update({
           status: 'accepted',
           updated_at: new Date().toISOString(),
         })
@@ -129,9 +130,9 @@ export default function ConnectionsScreen() {
     try {
       console.log('Rejecting connection:', id);
       
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('connections')
-        .update({ 
+        .update({
           status: 'rejected',
           updated_at: new Date().toISOString(),
         })
@@ -253,6 +254,26 @@ export default function ConnectionsScreen() {
                 </View>
                 <View style={styles.statusBadge}>
                   <IconSymbol name="checkmark.circle.fill" size={24} color={colors.success} />
+                </View>
+                <View style={styles.connectedActions}>
+                  <Pressable
+                    style={styles.profileButton}
+                    onPress={() => (router as any).push(`/connected-profile/${connection.userId}`)}
+                  >
+                    <IconSymbol name="person.fill" size={18} color={colors.primary} />
+                  </Pressable>
+                  <Pressable
+                    style={styles.messageButton}
+                    onPress={() => router.push(`/chat/${connection.userId}`)}
+                  >
+                    <IconSymbol name="message.fill" size={18} color={colors.secondary} />
+                  </Pressable>
+                  <View style={styles.phoneRequestMini}>
+                    <PhoneNumberRequest
+                      targetUserName={connection.name}
+                      targetUserId={connection.userId}
+                    />
+                  </View>
                 </View>
               </View>
             ))}
@@ -437,5 +458,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  connectedActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 8,
+  },
+  profileButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messageButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  phoneRequestMini: {
+    marginLeft: 4,
   },
 });

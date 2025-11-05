@@ -9,6 +9,7 @@ import {
   Pressable,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -43,6 +44,7 @@ import {
   FEMALE_BODY_TYPES,
 } from '@/constants/RegistrationData';
 import { supabase } from '@/app/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface RegistrationFormData {
   // Basic Information
@@ -131,6 +133,9 @@ interface RegistrationFormData {
 export default function RegistrationScreen() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user } = useAuth();
   const totalSteps = 10;
   
   const [formData, setFormData] = useState<RegistrationFormData>({
@@ -192,6 +197,42 @@ export default function RegistrationScreen() {
     profileImages: [],
   });
 
+  // Check authentication on component mount
+  React.useEffect(() => {
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      console.log('Checking authentication status...');
+
+      // Use AuthContext user instead of checking session directly
+      if (!user) {
+        console.log('No authenticated user found - redirecting to signup');
+        router.replace('/signup');
+        return;
+      }
+
+      console.log('User authenticated:', user.id);
+      setCurrentUser(user);
+
+      // Pre-fill email if available
+      if (user.email) {
+        setFormData((prev) => ({
+          ...prev,
+          email: user.email
+        }));
+      }
+
+    } catch (error) {
+      console.error('Authentication check error:', error);
+      // Redirect to signup if authentication fails
+      router.replace('/signup');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const updateFormData = (field: keyof RegistrationFormData, value: string) => {
     console.log('Updating field:', field, 'with value:', value);
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -233,35 +274,50 @@ export default function RegistrationScreen() {
   };
 
   const handleSubmit = async () => {
-    console.log('Starting registration submission...');
+    console.log('Registration: Starting registration submission...');
     setLoading(true);
-    
+
     try {
-      // Get current user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      console.log('Current user:', user?.id);
-      
-      if (userError) {
-        console.error('User error:', userError);
-        throw userError;
-      }
-      
+      // Verify user is authenticated through AuthContext
       if (!user) {
-        throw new Error('No user found. Please log in again.');
+        console.log('Registration: No authenticated user found');
+        router.replace('/signup');
+        return;
       }
+
+      console.log('Registration: Using authenticated user:', user.id, 'Email:', user.email);
 
       // Check if user already exists in users table
-      const { data: existingUser, error: checkError } = await supabase
+      const { data: existingUser, error: checkError } = await (supabase as any)
         .from('users')
         .select('id')
-        .eq('id', user.id)
+        .eq('auth_id', user.id)
         .single();
 
-      console.log('Existing user check:', existingUser);
+      if (!checkError && existingUser) {
+        console.log('User profile already exists, navigating to payment');
+        router.replace('/payment');
+        return;
+      }
 
-      // Prepare user data for database
+      // Also check if email exists (for admin accounts that might have been manually created)
+      const { data: existingEmailUser, error: emailCheckError } = await (supabase as any)
+        .from('users')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (!emailCheckError && existingEmailUser) {
+        console.log('Email already exists in database, navigating to payment');
+        router.replace('/payment');
+        return;
+      }
+
+      console.log('No existing user profile found, proceeding with creation');
+
+      // Prepare user data for database - ensure all fields are properly mapped
       const userData = {
-        id: user.id,  // This is the auth user ID
+        auth_id: user.id,  // Use auth_id as the primary key reference
         email: user.email,
         first_name: formData.name.split(' ')[0] || formData.name,
         last_name: formData.name.split(' ').slice(1).join(' ') || null,
@@ -296,6 +352,7 @@ export default function RegistrationScreen() {
         allergies_details: formData.allergiesDetails || null,
         smoking: formData.smoking || null,
         alcohol_consumption: formData.alcoholConsumption || null,
+        has_pets: formData.hasPets === 'Yes',
         pets_details: formData.petsDetails || null,
         education_level: formData.educationLevel || null,
         field_of_study: formData.fieldOfStudy || null,
@@ -321,37 +378,56 @@ export default function RegistrationScreen() {
         is_active: true,
         is_verified: false,
         has_paid: false,
+        payment_status: 'pending',
         updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
 
       console.log('Prepared user data:', { ...userData, profile_images: `[${userData.profile_images.length} images]` });
 
-      // Insert or update user data
-      const { data: insertedData, error: insertError } = await supabase
+      // Insert user data - use regular insert since we checked for existing user above
+      const { data: insertedData, error: insertError } = await (supabase as any)
         .from('users')
-        .upsert(userData, { 
-          onConflict: 'id',
-          ignoreDuplicates: false 
-        })
+        .insert(userData)
         .select();
 
       if (insertError) {
         console.error('Insert error:', insertError);
+
+        // If it's a username conflict, suggest a different username
+        if (insertError.code === '23505' && insertError.message.includes('username')) {
+          Alert.alert(
+            'Username Taken',
+            'The username you chose is already taken. Please choose a different one.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Go back to step 1 to change username
+                  setStep(1);
+                }
+              }
+            ]
+          );
+          return;
+        }
+
         throw insertError;
       }
 
       console.log('User profile created successfully:', insertedData);
 
-      Alert.alert(
-        'Registration Complete! 🎉',
-        'Your profile has been created. Please complete payment to activate your account.',
-        [
-          {
-            text: 'Continue to Payment',
-            onPress: () => router.replace('/payment'),
-          },
-        ]
-      );
+      // Registration successful
+      console.log('Registration: Profile created successfully');
+
+      // Force refresh the auth context to get updated profile data
+      console.log('Registration: Profile created successfully, refreshing auth context');
+
+      console.log('Registration: Profile created successfully, redirecting to payment');
+      // Redirect to payment after successful registration
+      setTimeout(() => {
+        router.replace('/payment');
+      }, 300);
     } catch (error: any) {
       console.error('Registration error:', error);
       Alert.alert(
@@ -396,7 +472,7 @@ export default function RegistrationScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Age"
+        placeholder="Age (25 and above)"
         placeholderTextColor={colors.textSecondary}
         value={formData.age}
         onChangeText={(text) => updateFormData('age', text)}
@@ -462,12 +538,12 @@ export default function RegistrationScreen() {
             required
           />
 
-          <DropdownPicker
-            label="Constituency"
+          <TextInput
+            style={styles.input}
+            placeholder="Constituency"
+            placeholderTextColor={colors.textSecondary}
             value={formData.constituency}
-            options={CONSTITUENCIES[formData.county] || CONSTITUENCIES['Default']}
-            onSelect={(value) => updateFormData('constituency', value)}
-            required
+            onChangeText={(text) => updateFormData('constituency', text)}
           />
         </>
       ) : formData.countryOfResidence && formData.countryOfResidence !== '' ? (
@@ -764,11 +840,12 @@ export default function RegistrationScreen() {
             }}
           />
 
-          <DropdownPicker
-            label="Work Constituency"
+          <TextInput
+            style={styles.input}
+            placeholder="Work Constituency"
+            placeholderTextColor={colors.textSecondary}
             value={formData.workConstituency}
-            options={CONSTITUENCIES[formData.workCounty] || CONSTITUENCIES['Default']}
-            onSelect={(value) => updateFormData('workConstituency', value)}
+            onChangeText={(text) => updateFormData('workConstituency', text)}
           />
         </>
       )}
@@ -945,7 +1022,7 @@ export default function RegistrationScreen() {
       </Text>
 
       <Pressable style={styles.uploadButton} onPress={handleImagePick}>
-        <IconSymbol name="image" size={24} color={colors.primary} />
+        <IconSymbol name="photo.fill" size={24} color={colors.primary} />
         <Text style={styles.uploadButtonText}>
           {formData.profileImages.length > 0
             ? `${formData.profileImages.length} image(s) selected`
@@ -966,7 +1043,7 @@ export default function RegistrationScreen() {
                   }));
                 }}
               >
-                <IconSymbol name="close" size={20} color={colors.error} />
+                <IconSymbol name="xmark" size={20} color={colors.error} />
               </Pressable>
             </View>
           ))}
@@ -986,10 +1063,20 @@ export default function RegistrationScreen() {
   return (
     <SafeAreaView style={commonStyles.safeArea}>
       <View style={styles.container}>
+        {/* Show loading while checking authentication */}
+        {authLoading ? (
+          <View style={commonStyles.centerContent}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[commonStyles.text, { marginTop: 16 }]}>
+              Verifying authentication...
+            </Text>
+          </View>
+        ) : (
+          <>
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleBack}>
-            <IconSymbol name="arrow-back" size={24} color={colors.text} />
+            <IconSymbol name="chevron.left" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Registration</Text>
           <Text style={styles.stepIndicator}>
@@ -1027,6 +1114,8 @@ export default function RegistrationScreen() {
             </Text>
           </Pressable>
         </View>
+      </>
+        )}
       </View>
     </SafeAreaView>
   );

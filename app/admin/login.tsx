@@ -1,5 +1,5 @@
 
-import { View, Text, StyleSheet, TextInput, Pressable, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, TextInput, Pressable, Alert, ActivityIndicator, Switch } from "react-native";
 import { supabase } from "@/app/integrations/supabase/client";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
@@ -81,6 +81,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 14,
   },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+  },
+  toggleDescription: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  toggleSwitch: {
+    marginLeft: 12,
+  },
   infoBox: {
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -99,6 +124,7 @@ const styles = StyleSheet.create({
 export default function AdminLoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginAsUser, setLoginAsUser] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
@@ -127,8 +153,24 @@ export default function AdminLoginScreen() {
       if (data.user) {
         console.log('User authenticated:', data.user.id);
 
+        // Check if user should log in as regular user
+        if (loginAsUser) {
+          console.log('Admin logging in as user');
+          Alert.alert(
+            'User Login Mode',
+            'You are logging in as a regular user for testing/support purposes.',
+            [
+              {
+                text: 'Continue',
+                onPress: () => router.replace('/(tabs)/(home)')
+              }
+            ]
+          );
+          return;
+        }
+
         // Check if user is admin
-        const { data: userData, error: userError } = await supabase
+        const { data: userData, error: userError } = await (supabase as any)
           .from('users')
           .select('is_admin, first_name')
           .eq('id', data.user.id)
@@ -145,7 +187,7 @@ export default function AdminLoginScreen() {
 
         if (!userData?.is_admin) {
           Alert.alert(
-            'Access Denied', 
+            'Access Denied',
             'You do not have admin privileges. This login is for administrators only.',
             [
               {
@@ -163,7 +205,7 @@ export default function AdminLoginScreen() {
         console.log('Admin access granted');
         Alert.alert(
           'Welcome Admin',
-          `Welcome back, ${userData.first_name || 'Admin'}!`,
+          `Welcome back, ${userData?.first_name || 'Admin'}!`,
           [
             {
               text: 'Continue',
@@ -222,6 +264,39 @@ export default function AdminLoginScreen() {
           />
         </View>
 
+        {/* Login as User Toggle */}
+        <View style={styles.toggleContainer}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toggleLabel}>Login as User</Text>
+            <Text style={styles.toggleDescription}>
+              Test the app as a regular user (admin use only)
+            </Text>
+          </View>
+          <Switch
+            style={styles.toggleSwitch}
+            value={loginAsUser}
+            onValueChange={(value) => {
+              if (value) {
+                Alert.alert(
+                  'User Login Mode',
+                  'This will log you in as a regular user for testing purposes. You will bypass admin privileges and access the main app.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Enable',
+                      onPress: () => setLoginAsUser(true)
+                    }
+                  ]
+                );
+              } else {
+                setLoginAsUser(false);
+              }
+            }}
+            trackColor={{ false: colors.border, true: colors.primary + '40' }}
+            thumbColor={loginAsUser ? colors.primary : colors.textSecondary}
+          />
+        </View>
+
         <Pressable
           style={[styles.button, loading && styles.buttonDisabled]}
           onPress={handleLogin}
@@ -230,7 +305,9 @@ export default function AdminLoginScreen() {
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.buttonText}>Login as Admin</Text>
+            <Text style={styles.buttonText}>
+              {loginAsUser ? 'Login as User' : 'Login as Admin'}
+            </Text>
           )}
         </Pressable>
       </View>

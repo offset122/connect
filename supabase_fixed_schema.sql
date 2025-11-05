@@ -65,19 +65,15 @@ DROP POLICY IF EXISTS reports_insert_own ON public.reports;
 -- FIXED RLS POLICIES - USERS TABLE
 -- ============================================================================
 
+-- Allow all authenticated users to view other users (needed for chat)
+CREATE POLICY "users_select_all_authenticated"
+  ON public.users FOR SELECT
+  USING (auth.role() = 'authenticated');
+
 -- Allow users to view their own profile (direct auth.uid() check)
 CREATE POLICY "users_select_own_profile"
   ON public.users FOR SELECT
   USING (auth.uid() = auth_id);
-
--- Allow users to view active paid profiles (but only basic info, not their own detailed profile)
-CREATE POLICY "users_select_active_profiles"
-  ON public.users FOR SELECT
-  USING (
-    auth.uid() != auth_id 
-    AND is_active = true 
-    AND (has_paid = true OR payment_status = 'completed')
-  );
 
 -- Allow users to insert their own profile during registration
 CREATE POLICY "users_insert_own_profile"
@@ -91,17 +87,36 @@ CREATE POLICY "users_update_own_profile"
   WITH CHECK (auth.uid() = auth_id);
 
 -- Allow authenticated users to view their own data for connections/messages
--- This is needed for queries that join with other tables
 CREATE POLICY "users_select_for_joins"
   ON public.users FOR SELECT
   USING (auth.uid() = auth_id);
 
 -- ============================================================================
--- FIXED RLS POLICIES - CONNECTIONS TABLE  
+-- FIXED RLS POLICIES - CONNECTIONS TABLE
 -- ============================================================================
 
--- Allow users to view connections they're part of
--- Use auth.uid() directly instead of subquery to avoid recursion
+-- Allow all authenticated users to view connections (needed for chat)
+CREATE POLICY "connections_select_all_authenticated"
+  ON public.connections FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+-- Allow authenticated users to create connection requests
+CREATE POLICY "connections_insert_authenticated"
+  ON public.connections FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Allow authenticated users to update connections they're part of
+CREATE POLICY "connections_update_authenticated"
+  ON public.connections FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Allow authenticated users to delete connections
+CREATE POLICY "connections_delete_authenticated"
+  ON public.connections FOR DELETE
+  USING (auth.role() = 'authenticated');
+
+-- Also create the specific policies for exact access
 CREATE POLICY "connections_select_own"
   ON public.connections FOR SELECT
   USING (
@@ -113,31 +128,9 @@ CREATE POLICY "connections_select_own"
     )
   );
 
--- Allow users to create connection requests
 CREATE POLICY "connections_insert_own"
   ON public.connections FOR INSERT
   WITH CHECK (
-    requester_id IN (
-      SELECT id FROM public.users WHERE auth_id = auth.uid()
-    )
-  );
-
--- Allow users to update connections they're part of
-CREATE POLICY "connections_update_own"
-  ON public.connections FOR UPDATE
-  USING (
-    requester_id IN (
-      SELECT id FROM public.users WHERE auth_id = auth.uid()
-    )
-    OR recipient_id IN (
-      SELECT id FROM public.users WHERE auth_id = auth.uid()
-    )
-  );
-
--- Allow users to delete connection requests they created
-CREATE POLICY "connections_delete_own"
-  ON public.connections FOR DELETE
-  USING (
     requester_id IN (
       SELECT id FROM public.users WHERE auth_id = auth.uid()
     )
@@ -147,7 +140,32 @@ CREATE POLICY "connections_delete_own"
 -- FIXED RLS POLICIES - MESSAGES TABLE
 -- ============================================================================
 
--- Allow users to view messages they sent or received
+-- Allow all authenticated users to view messages (simplified for chat)
+CREATE POLICY "messages_select_all_authenticated"
+  ON public.messages FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+-- Allow authenticated users to send messages
+CREATE POLICY "messages_insert_authenticated"
+  ON public.messages FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Allow authenticated users to update messages (mark as read)
+CREATE POLICY "messages_update_authenticated"
+  ON public.messages FOR UPDATE
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
+
+-- Allow authenticated users to delete messages they sent
+CREATE POLICY "messages_delete_own"
+  ON public.messages FOR DELETE
+  USING (
+    sender_id IN (
+      SELECT id FROM public.users WHERE auth_id = auth.uid()
+    )
+  );
+
+-- Also create simpler policies for direct access
 CREATE POLICY "messages_select_own"
   ON public.messages FOR SELECT
   USING (
@@ -159,28 +177,9 @@ CREATE POLICY "messages_select_own"
     )
   );
 
--- Allow users to send messages
 CREATE POLICY "messages_insert_own"
   ON public.messages FOR INSERT
   WITH CHECK (
-    sender_id IN (
-      SELECT id FROM public.users WHERE auth_id = auth.uid()
-    )
-  );
-
--- Allow users to update received messages (mark as read)
-CREATE POLICY "messages_update_received"
-  ON public.messages FOR UPDATE
-  USING (
-    receiver_id IN (
-      SELECT id FROM public.users WHERE auth_id = auth.uid()
-    )
-  );
-
--- Allow users to delete messages they sent
-CREATE POLICY "messages_delete_own"
-  ON public.messages FOR DELETE
-  USING (
     sender_id IN (
       SELECT id FROM public.users WHERE auth_id = auth.uid()
     )

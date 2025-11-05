@@ -183,15 +183,21 @@ export const GENDERS = ['Male', 'Female'];
 
 export const SEXUAL_ORIENTATIONS = [
   'Heterosexual',
-  'Lesbian',
+  'Homosexual',
   'Bisexual',
-  'Gay',
   'Pansexual',
+  'Asexual',
+  'Other',
 ];
 
 export const RELATIONSHIP_GOALS = [
   'Casual',
   'Serious relationship leading to marriage',
+  'Marriage',
+  'Long-term relationship',
+  'Short-term relationship',
+  'Friendship',
+  'Not sure yet',
 ];
 
 export const RELIGIONS = [
@@ -199,24 +205,31 @@ export const RELIGIONS = [
   'Islam',
   'Hinduism',
   'Buddhism',
-  'Bahá\'í Faith',
-  'Traditional African religions',
-  'Atheism',
+  'Judaism',
+  'Traditional African religion',
+  'Atheist / Agnostic',
+  'Other',
+  'Prefer not to say',
 ];
 
 export const RELIGIOUSNESS_LEVELS = [
-  'Religious',
   'Very religious',
+  'Moderately religious',
+  'Slightly religious',
   'Not religious',
 ];
 
 export const YES_NO_OPTIONS = ['Yes', 'No'];
 
 export const COMPLEXIONS = [
-  'Dark (deep ebony or rich chocolate tone)',
+  'Very fair',
+  'Fair',
+  'Medium',
+  'Olive',
+  'Brown',
+  'Dark brown',
+  'Very dark',
   'Medium brown (warm cocoa or bronze tone)',
-  'Light brown (golden or caramel tone)',
-  'Fair (light or pale complexion)',
 ];
 
 export const TEETH_STATUS_OPTIONS = [
@@ -254,20 +267,19 @@ export const EDUCATION_LEVELS = [
 ];
 
 export const EMPLOYMENT_STATUS_OPTIONS = [
-  'Self employed',
-  'Employed',
+  'Employed full-time',
+  'Employed part-time',
+  'Self-employed',
   'Unemployed',
   'Student',
   'Retired',
-  'Other',
 ];
 
 export const FINANCIAL_STABILITY_OPTIONS = [
-  'Fully financially stable',
-  'I can afford my bills comfortably',
-  'Managing but sometimes struggle',
-  'Entrepreneur trying to build my business',
-  'Financially unstable / in need of support',
+  'Very stable',
+  'Stable',
+  'Getting by',
+  'Struggling',
 ];
 
 export const YES_NO_MAYBE = ['Yes', 'No', 'Maybe'];
@@ -277,15 +289,14 @@ export const MARITAL_STATUS_OPTIONS = [
   'Divorced',
   'Widowed',
   'Widower',
+  'Married',
+  'Separated',
 ];
 
 export const RELATIONSHIP_PERSPECTIVES = [
-  'Man leads, woman follows',
-  'Woman leads, man follows',
+  'Traditional (man leads)',
+  'Modern (woman leads)',
   'Shared roles / equal partnership',
-  'Traditional roles (each has defined responsibilities)',
-  'Independent but together (each maintains personal space and goals)',
-  'Still figuring it out',
 ];
 
 // Body type images would be stored in assets and referenced here

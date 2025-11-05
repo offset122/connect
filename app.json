@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Natively",
+      "bundleIdentifier": "com.hannasconnect.com ",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -26,7 +26,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.hannas.connect",
-      "versionCode": 2
+      "versionCode": 13
     },
     "web": {
       "favicon": "./assets/images/hannas icon.jpg",

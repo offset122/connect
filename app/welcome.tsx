@@ -1,4 +1,4 @@
-
+ 
 import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,14 +10,6 @@ export default function WelcomeScreen() {
   return (
     <SafeAreaView style={commonStyles.safeArea}>
       <View style={styles.container}>
-        {/* Admin Access Button */}
-        <Pressable 
-          style={styles.adminButton}
-          onPress={() => router.push('/admin/login')}
-        >
-          <IconSymbol name="lock.shield.fill" size={20} color={colors.textSecondary} />
-        </Pressable>
-
         {/* Content */}
         <View style={styles.content}>
           {/* Logo Container with Gradient */}
@@ -64,7 +56,7 @@ export default function WelcomeScreen() {
 
             <View style={styles.featureCard}>
               <View style={[styles.featureIcon, { backgroundColor: colors.success + '20' }]}>
-                <IconSymbol name="shield.checkmark.fill" size={28} color={colors.success} />
+                <IconSymbol name="checkmark.shield.fill" size={28} color={colors.success} />
               </View>
               <Text style={styles.featureTitle}>Safe</Text>
               <Text style={styles.featureDescription}>Report & block features for your safety</Text>
@@ -103,20 +95,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     justifyContent: 'space-between',
-  },
-  adminButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
-    elevation: 3,
   },
   content: {
     flex: 1,

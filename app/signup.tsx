@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import React, { useState } from "react";
 import { IconSymbol } from "@/components/IconSymbol";
+import { useAuth } from "@/contexts/AuthContext";
 
 const styles = StyleSheet.create({
   container: {
@@ -24,7 +25,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
@@ -95,11 +96,8 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { signUp } = useAuth();
 
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
 
   const handleSignUp = async () => {
     if (!email || !password || !confirmPassword) {
@@ -107,10 +105,6 @@ export default function SignUpScreen() {
       return;
     }
 
-    if (!validateEmail(email)) {
-      Alert.alert('Error', 'Please enter a valid email address');
-      return;
-    }
 
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters long');
@@ -125,36 +119,20 @@ export default function SignUpScreen() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed'
-        }
-      });
+      console.log('Signup: Starting signup process for email:', email);
+      const result = await signUp(email, password);
 
-      if (error) {
-        Alert.alert('Error', error.message);
+      if (!result.success) {
+        console.log('Signup: Signup failed:', result.error);
+        Alert.alert('Error', result.error || 'An error occurred during signup');
         return;
       }
 
-      if (data.user) {
-        Alert.alert(
-          'Success',
-          'Account created! Please check your email to verify your account before logging in.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Redirect to registration screen to complete profile
-                router.replace('/registration');
-              }
-            }
-          ]
-        );
-      }
+      console.log('Signup: Signup successful, user created with email:', email);
+      Alert.alert('Success', 'Account created successfully! Please complete your profile registration.');
+      // Let AuthContext handle the redirect automatically
     } catch (error: any) {
-      console.error('Signup error:', error);
+      console.error('Signup: Signup error:', error);
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);

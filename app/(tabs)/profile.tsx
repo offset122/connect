@@ -41,7 +41,7 @@ export default function ProfileScreen() {
       if (profileError) throw profileError;
 
       setUserProfile(profileData);
-      setIsOnline(profileData.online_status || false);
+      setIsOnline((profileData as any)?.online_status || false);
       
       console.log('User profile loaded:', profileData);
     } catch (error) {
@@ -88,9 +88,9 @@ export default function ProfileScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('users')
-        .update({ 
+        .update({
           online_status: value,
           updated_at: new Date().toISOString(),
         })
@@ -137,8 +137,8 @@ export default function ProfileScreen() {
         <View style={[commonStyles.centerContent, { backgroundColor: colors.background }]}>
           <IconSymbol name="person" size={64} color={colors.textSecondary} />
           <Text style={[commonStyles.title, { marginTop: 16 }]}>Profile Not Found</Text>
-          <Pressable style={[buttonStyles.primary, { marginTop: 20 }]} onPress={() => router.replace('/registration')}>
-            <Text style={commonStyles.buttonText}>Complete Registration</Text>
+          <Pressable style={[styles.editButton, { marginTop: 20 }]} onPress={() => router.replace('/registration')}>
+            <Text style={styles.editButtonText}>Complete Registration</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -188,7 +188,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
           )}
-          <Pressable style={styles.editButton} onPress={() => Alert.alert('Coming Soon', 'Profile editing will be available soon')}>
+          <Pressable style={styles.editButton} onPress={() => router.push('/edit-profile')}>
             <Text style={styles.editButtonText}>Edit Profile</Text>
           </Pressable>
         </View>
@@ -285,7 +285,7 @@ export default function ProfileScreen() {
               {userProfile.has_paid ? 'Paid' : 'Pending'}
             </Text>
           </View>
-          {userProfile.has_paid && userProfile.account_expiry && (
+          {userProfile.account_expiry && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Subscription Expires</Text>
               <Text style={[styles.detailValue, styles.subscriptionText]}>
@@ -294,6 +294,21 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+        {/* Admin Section (Only for Admins) */}
+        {userProfile.is_admin && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Administration</Text>
+            <Pressable 
+              style={styles.adminButton}
+              onPress={() => router.push('/admin/dashboard')}
+            >
+              <IconSymbol name="gearshape.fill" size={24} color={colors.primary} />
+              <Text style={styles.adminButtonText}>Admin Dashboard</Text>
+              <IconSymbol name="chevron.right" size={20} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+        )}
+
 
         {/* Support */}
         <View style={styles.section}>
@@ -310,7 +325,7 @@ export default function ProfileScreen() {
         {/* Logout Button */}
         <View style={styles.section}>
           <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <IconSymbol name="exit" size={24} color={colors.error} />
+            <IconSymbol name="arrow.backward.circle" size={24} color={colors.error} />
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
         </View>
@@ -452,6 +467,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   supportButtonText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  adminButtonText: {
     flex: 1,
     fontSize: 16,
     fontWeight: '600',

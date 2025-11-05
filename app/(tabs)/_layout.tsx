@@ -26,6 +26,13 @@ export default function TabLayout() {
       label: 'Messages',
     },
     {
+      name: 'notifications',
+      route: '/(tabs)/notifications',
+      icon: 'bell.fill',
+      label: 'Notifications',
+      showNotifications: true,
+    },
+    {
       name: 'profile',
       route: '/(tabs)/profile',
       icon: 'person.fill',
@@ -44,6 +51,7 @@ export default function TabLayout() {
         <Stack.Screen name="(home)" />
         <Stack.Screen name="connections" />
         <Stack.Screen name="messages" />
+        <Stack.Screen name="notifications" />
         <Stack.Screen name="profile" />
       </Stack>
       <FloatingTabBar tabs={tabs} />

@@ -15,12 +15,15 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, commonStyles } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
+import MpesaService from '@/app/integrations/mpesa/service';
 
 export default function PaymentScreen() {
   const [loading, setLoading] = useState(false);
+  const [stkPushLoading, setStkPushLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<'mpesa' | 'stripe'>('mpesa');
   const [userId, setUserId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   useEffect(() => {
     checkUser();
@@ -28,27 +31,76 @@ export default function PaymentScreen() {
 
   const checkUser = async () => {
     try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) throw error;
-      
+      console.log('Payment: Checking user...');
+
+      // First try to get session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        console.log('Payment: No session found, trying to get user...');
+        // If no session, try getUser which might work for some auth states
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) throw error;
+
+        if (!user) {
+          throw new Error('Please log in to continue');
+        }
+      }
+
+      const user = session?.user;
+      if (!user) {
+        throw new Error('Please log in to continue');
+      }
+
+      console.log('Payment: Auth user:', user?.id);
+
+      console.log('Payment: Auth user:', user?.id);
+
       if (user) {
         setUserId(user.id);
-        
-        // Check if user has already paid
-        const { data: userData, error: userError } = await supabase
+
+        // Check if user profile exists first
+        const { data: profileData, error: profileError } = await (supabase as any)
           .from('users')
-          .select('has_paid')
-          .eq('id', user.id)
+          .select('id, has_paid, payment_status, first_name, email, is_active')
+          .eq('auth_id', user.id)
           .single();
-        
-        if (userError) {
-          console.error('Error checking payment status:', userError);
-        } else if (userData?.has_paid) {
+
+        console.log('Payment: Profile check result:', profileData, profileError);
+
+        if (profileError) {
+          console.error('Error checking user profile:', profileError);
+          Alert.alert(
+            'Profile Not Found',
+            'Your profile was not found. Please complete registration first.',
+            [{ text: 'Go to Registration', onPress: () => router.replace('/registration') }]
+          );
+          return;
+        }
+
+        console.log('Payment: User profile found:', profileData);
+        setUserProfile(profileData);
+
+        // Check if user has already paid
+        if (profileData?.has_paid) {
           Alert.alert(
             'Already Paid',
             'You have already completed payment. Redirecting to home...',
-            [{ text: 'OK', onPress: () => router.replace('/(tabs)/(home)') }]
+            [{ text: 'OK', onPress: () => {
+              setTimeout(() => router.replace('/(tabs)/(home)'), 500);
+            }}]
           );
+          return;
+        }
+
+        // Check if user is inactive - they need to be activated by admin first
+        if (!profileData?.is_active) {
+          Alert.alert(
+            'Account Not Activated',
+            'Your account needs to be activated by an administrator before you can make payment. Please contact support or wait for admin approval.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
         }
       } else {
         Alert.alert('Error', 'Please log in to continue');
@@ -66,24 +118,28 @@ export default function PaymentScreen() {
       return;
     }
 
-    if (!userId) {
-      Alert.alert('Error', 'User not found. Please log in again.');
+    if (!userId || !userProfile) {
+      console.log('Payment: No user ID or profile found', { userId, userProfile });
+      Alert.alert('Error', 'User profile not found. Please complete registration first.');
+      router.replace('/registration');
       return;
     }
+
+    console.log('Payment: Starting M-Pesa payment for user:', userId, 'Profile:', userProfile);
 
     setLoading(true);
 
     try {
-      // Create payment record
-      const { data: paymentData, error: paymentError } = await supabase
-        .from('payments')
+      // Use the user_payments table from the database schema
+      const { data: paymentData, error: paymentError } = await (supabase as any)
+        .from('user_payments')
         .insert({
           user_id: userId,
           amount: 3000,
           currency: 'KSH',
           payment_method: 'mpesa',
           status: 'pending',
-          metadata: { phone_number: phoneNumber },
+          transaction_date: new Date().toISOString(),
         })
         .select()
         .single();
@@ -94,37 +150,38 @@ export default function PaymentScreen() {
 
       // In a real implementation, you would call an M-Pesa API here
       // For now, we'll simulate a successful payment
-      
+
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Update payment status to completed
-      const { error: updatePaymentError } = await supabase
-        .from('payments')
-        .update({ 
+      const { error: updatePaymentError } = await (supabase as any)
+        .from('user_payments')
+        .update({
           status: 'completed',
+          payment_completed: true,
           transaction_id: `MPESA${Date.now()}`,
+          mpesa_receipt: `receipt_${Date.now()}`,
           updated_at: new Date().toISOString(),
         })
         .eq('id', paymentData.id);
 
       if (updatePaymentError) throw updatePaymentError;
 
-      // Update user's payment status and set account expiry
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 180); // 180 days from now
-
-      const { error: updateUserError } = await supabase
+      // Update user's payment status (the trigger will handle the rest)
+      const { error: updateUserError } = await (supabase as any)
         .from('users')
-        .update({ 
+        .update({
           has_paid: true,
-          payment_date: new Date().toISOString(),
-          account_expiry: expiryDate.toISOString(),
+          payment_status: 'completed',
           updated_at: new Date().toISOString(),
         })
-        .eq('id', userId);
+        .eq('auth_id', userId);
 
-      if (updateUserError) throw updateUserError;
+      if (updateUserError) {
+        console.error('Payment: Error updating user:', updateUserError);
+        throw updateUserError;
+      }
 
       Alert.alert(
         'Payment Successful! 🎉',
@@ -168,7 +225,7 @@ export default function PaymentScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()}>
-            <IconSymbol name="arrow-back" size={24} color={colors.text} />
+            <IconSymbol name="arrow.backward" size={24} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Complete Payment</Text>
           <View style={{ width: 24 }} />
@@ -307,7 +364,7 @@ export default function PaymentScreen() {
             ) : (
               <>
                 <Text style={styles.payButtonText}>Pay KSH 3,000</Text>
-                <IconSymbol name="arrow-forward" size={20} color={colors.card} />
+                <IconSymbol name="arrow.forward" size={20} color={colors.card} />
               </>
             )}
           </Pressable>

@@ -19,12 +19,14 @@ import { useRouter, usePathname } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 export interface TabBarItem {
   name: string;
   route: string;
   icon: string;
   label: string;
+  showNotifications?: boolean;
 }
 
 interface FloatingTabBarProps {
@@ -43,6 +45,7 @@ export default function FloatingTabBar({
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
+  const { unreadCount } = useNotifications();
 
   const activeIndex = tabs.findIndex((tab) => pathname.includes(tab.name));
   const scaleValues = tabs.map(() => useSharedValue(1));
@@ -77,7 +80,7 @@ export default function FloatingTabBar({
 
   return (
     <View style={[styles.safeArea, { bottom: bottomMargin }]}>
-      <SafeAreaView edges={['bottom']}>
+      <SafeAreaView>
         <View
           style={[
             styles.container,
@@ -99,11 +102,11 @@ export default function FloatingTabBar({
             });
 
             return (
-              <Animated.View 
-                key={tab.name} 
+              <Animated.View
+                key={tab.name}
                 style={[
-                  styles.tabWrapper, 
-                  { width: tabWidth }, 
+                  styles.tabWrapper,
+                  { width: tabWidth },
                   animatedStyle
                 ]}
               >
@@ -114,7 +117,7 @@ export default function FloatingTabBar({
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <View style={[
-                    styles.iconContainer, 
+                    styles.iconContainer,
                     isActive && styles.iconContainerActive
                   ]}>
                     <IconSymbol
@@ -122,6 +125,15 @@ export default function FloatingTabBar({
                       size={isActive ? 26 : 22}
                       color={isActive ? colors.primary : colors.textSecondary}
                     />
+                    
+                    {/* Notification Badge */}
+                    {tab.showNotifications && unreadCount > 0 && (
+                      <View style={styles.notificationBadge}>
+                        <Text style={styles.notificationBadgeText}>
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <Text
                     style={[
@@ -196,6 +208,25 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     marginTop: 2,
+    textAlign: 'center',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.error || '#EF5350',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  notificationBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
     textAlign: 'center',
   },
 });

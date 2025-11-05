@@ -6,12 +6,14 @@ import { router } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
 
   const handleLogin = async () => {
     console.log('Login attempt:', { email });
@@ -23,73 +25,27 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
-      });
+      // Skip email confirmation and use AuthContext signIn directly
+      const result = await signIn(email.trim(), password);
 
-      if (error) {
-        console.error('Login error:', error);
-        Alert.alert('Login Failed', error.message);
+      if (!result.success) {
+        // If email confirmation is required, show specific message
+        if (result.error?.includes('confirm your account') || result.error?.includes('Email not confirmed')) {
+          Alert.alert(
+            'Email Confirmation Required',
+            'Please check your email and click the confirmation link before logging in.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          Alert.alert('Login Failed', result.error || 'Invalid email or password');
+        }
         return;
       }
 
-      console.log('Login successful:', data);
-      
-      // Check if user has completed registration
-      console.log('Authenticated user:', {
-        id: data.user?.id,
-        email: data.user?.email,
-        emailVerified: data.user?.email_confirmed_at
-      });
-      
-      // First try by email
-      let { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', data.user?.email)
-        .single();
-
-      if (!profile) {
-        console.log('No profile found by email, trying by auth ID...');
-        // Try by auth ID as fallback
-        const result = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user?.id)
-          .single();
-          
-        profile = result.data;
-        profileError = result.error;
-      }
-
-      console.log('Final profile query result:', { 
-        found: !!profile,
-        profile: profile ? { 
-          id: profile.id,
-          auth_id: profile.auth_id,
-          email: profile.email,
-          first_name: profile.first_name
-        } : null,
-        error: profileError?.message
-      });
-
-      if (!profile || profileError) {
-        console.log('No profile found or error occurred, redirecting to registration');
-        router.replace('/registration');
-        return;
-      }
-      
-      if (!profile.payment_status || profile.payment_status !== 'completed') {
-        console.log('Payment not completed, redirecting to payment');
-        router.replace('/payment');
-      } else {
-        console.log('Login complete, redirecting to home');
-        router.replace('/(tabs)/(home)');
-      }
+      console.log('Login successful, routing handled by AuthContext');
     } catch (error: any) {
       console.error('Login error:', error);
-      Alert.alert('Error', error.message || 'Failed to login. Please try again.');
+      Alert.alert('Login Failed', error.message || 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
