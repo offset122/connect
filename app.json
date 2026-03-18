@@ -1,52 +1,126 @@
 {
   "expo": {
-    "name": "hannas-connect",
-    "slug": "hannas-connect-iqookc",
+    "name": "Hanna’s Connect",
+    "slug": "hannasconnect",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/hannas icon.jpg",
+
+    "scheme": "hannasconnect",
+
+    "icon": "./assets/images/logoh.jpg",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+
     "splash": {
-      "image": "./assets/images/hannas icon.jpg",
+      "image": "./assets/images/logoh.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
+
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hannasconnect.com ",
+      "bundleIdentifier": "com.hannas.connect",
+      "buildNumber": "9",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera for video calls",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone for calls",
+        "UIBackgroundModes": ["voip"]
       }
     },
+
     "android": {
+      "package": "com.hannas.connect",
+      "versionCode": 48,
+
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/hannas icon.jpg",
+        "foregroundImage": "./assets/images/logoh.jpg",
         "backgroundColor": "#000000"
       },
+
       "edgeToEdgeEnabled": true,
-      "package": "com.hannas.connect",
-      "versionCode": 13
+
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "hannasconnect"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "hannasconnect",
+              "host": "reset-password"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "hannasconnect",
+              "host": "payment"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
+
     "web": {
-      "favicon": "./assets/images/hannas icon.jpg",
+      "favicon": "./assets/images/logoh.jpg",
       "bundler": "metro"
     },
+
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for video calls",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for calls",
+          "recordAudioAndroid": true
+        }
+      ]
     ],
-    "scheme": "natively",
+
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/481dbad8-c70c-4aae-898a-e9964f19fa26"
+    },
+
     "experiments": {
       "typedRoutes": true
     },
+
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "4d991b28-30b2-45b8-83dc-e5f65677d6b9"
-      }
+        "projectId": "481dbad8-c70c-4aae-898a-e9964f19fa26"
+      },
+
+      "callbackUrl": "https://dbvsexpcrojtnriqfbwa.supabase.co/functions/v1/paystack-callback"
     },
-    "owner": "clemooffset"
+
+    "owner": "bodanego"
   }
 }

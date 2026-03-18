@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { router } from 'expo-router';
+import safeBack from '@/utils/safeRouter';
 import { GlassView } from 'expo-glass-effect';
 import { useTheme } from '@react-navigation/native';
 
@@ -11,7 +12,7 @@ export default function Modal() {
       <Text style={[styles.title, { color: theme.colors.text }]}>Standard Modal</Text>
       <Text style={[styles.text, { color: theme.colors.text }]}>This is a modal presentation.</Text>
 
-      <Pressable onPress={() => router.back()}>
+      <Pressable onPress={() => safeBack(router)}>
         <GlassView style={styles.button} glassEffectStyle="clear">
           <Text style={[styles.buttonText, { color: theme.colors.primary }]}>Close Modal</Text>
         </GlassView>

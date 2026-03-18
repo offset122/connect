@@ -20,13 +20,16 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import * as Haptics from 'expo-haptics';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useMessages } from '@/contexts/MessagesContext';
+import { useConnections } from '@/contexts/ConnectionsContext';
 
 export interface TabBarItem {
   name: string;
   route: string;
   icon: string;
   label: string;
-  showNotifications?: boolean;
+  showBadge?: boolean;
+  badgeType?: 'notifications' | 'messages' | 'connections';
 }
 
 interface FloatingTabBarProps {
@@ -45,7 +48,25 @@ export default function FloatingTabBar({
   const router = useRouter();
   const pathname = usePathname();
   const theme = useTheme();
-  const { unreadCount } = useNotifications();
+  const { unreadCount: notificationsCount } = useNotifications();
+  const { unreadMessagesCount } = useMessages();
+  const { totalPendingCount: connectionsCount } = useConnections();
+
+  // Get badge count based on tab type
+  const getBadgeCount = (tab: TabBarItem): number => {
+    if (!tab.showBadge) return 0;
+    
+    switch (tab.badgeType) {
+      case 'notifications':
+        return notificationsCount;
+      case 'messages':
+        return unreadMessagesCount;
+      case 'connections':
+        return connectionsCount;
+      default:
+        return 0;
+    }
+  };
 
   const activeIndex = tabs.findIndex((tab) => pathname.includes(tab.name));
   const scaleValues = tabs.map(() => useSharedValue(1));
@@ -126,11 +147,11 @@ export default function FloatingTabBar({
                       color={isActive ? colors.primary : colors.textSecondary}
                     />
                     
-                    {/* Notification Badge */}
-                    {tab.showNotifications && unreadCount > 0 && (
+                    {/* Badge for unread counts */}
+                    {tab.showBadge && getBadgeCount(tab) > 0 && (
                       <View style={styles.notificationBadge}>
                         <Text style={styles.notificationBadgeText}>
-                          {unreadCount > 99 ? '99+' : unreadCount}
+                          {getBadgeCount(tab) > 99 ? '99+' : getBadgeCount(tab)}
                         </Text>
                       </View>
                     )}

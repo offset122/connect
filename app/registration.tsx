@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,226 +6,194 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  Platform,
   Alert,
   ActivityIndicator,
+  Image,
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors, commonStyles } from '@/styles/commonStyles';
-import DropdownPicker from '@/components/DropdownPicker';
-import * as ImagePicker from 'expo-image-picker';
+import safeBack from '../utils/safeRouter';
+import { IconSymbol } from '../components/IconSymbol';
+import { colors, commonStyles } from '../styles/commonStyles';
+import DropdownPicker from '../components/DropdownPicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   GENDERS,
   NATIONALITIES,
-  SEXUAL_ORIENTATIONS,
-  RELATIONSHIP_GOALS,
   COUNTRIES,
   KENYAN_COUNTIES,
-  CONSTITUENCIES,
-  KENYAN_TRIBES,
-  RELIGIONS,
-  RELIGIOUSNESS_LEVELS,
-  YES_NO_OPTIONS,
-  COMPLEXIONS,
-  TEETH_STATUS_OPTIONS,
-  HIV_STATUS_OPTIONS,
-  BLOOD_GROUPS,
-  YES_NO_OCCASIONALLY,
-  EDUCATION_LEVELS,
-  EMPLOYMENT_STATUS_OPTIONS,
-  FINANCIAL_STABILITY_OPTIONS,
-  YES_NO_MAYBE,
-  MARITAL_STATUS_OPTIONS,
-  RELATIONSHIP_PERSPECTIVES,
-  MALE_BODY_TYPES,
-  FEMALE_BODY_TYPES,
-} from '@/constants/RegistrationData';
-import { supabase } from '@/app/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+} from '../constants/RegistrationData';
+import { supabase } from './integrations/supabase/client'; // Fixed path
+import { useAuth } from '../contexts/AuthContext';
+import APP_CONFIG from '../constants/config';
 
 interface RegistrationFormData {
-  // Basic Information
+  avatar: string;
   name: string;
   username: string;
   gender: string;
-  age: string;
+  dateOfBirth: string;
   nationality: string;
-  
-  // Sexual & Relationship
-  sexualOrientation: string;
-  relationshipGoal: string;
-  
-  // Location
   countryOfResidence: string;
   city: string;
   county: string;
-  constituency: string;
-  
-  // Tribal & Religious
-  tribe: string;
-  tribeOther: string;
-  religion: string;
-  religiousness: string;
-  believeInMarriage: string;
-  
-  // Physical Appearance
-  heightFt: string;
-  heightIn: string;
-  weightKg: string;
-  bodyType: string;
-  complexion: string;
-  teethStatus: string;
-  hasScars: string;
-  scarsDetails: string;
-  
-  // Health
-  hivStatus: string;
-  bloodGroup: string;
-  hasDisabilities: string;
-  disabilitiesDetails: string;
-  hasAllergies: string;
-  allergiesDetails: string;
-  
-  // Lifestyle
-  smoking: string;
-  alcoholConsumption: string;
-  hasPets: string;
-  petsDetails: string;
-  
-  // Education & Work
-  educationLevel: string;
-  fieldOfStudy: string;
   currentProfession: string;
-  workCounty: string;
-  workConstituency: string;
-  employmentStatus: string;
-  financialStability: string;
-  
-  // Preferences
-  canRelocate: string;
-  canDateWithDisability: string;
-  
-  // Family
   maritalStatus: string;
-  hasChildren: string;
-  numberOfChildren: string;
-  agesOfChildren: string;
-  canDateWithKids: string;
+  hasKids: string;
+  numberOfKids: string;
+  hivStatus: string;
+  religion: string;
   wantKidsInFuture: string;
-  
-  // Relationship Perspective
-  relationshipPerspective: string;
-  
-  // Personal Boundaries & Expectations
-  doNotContactIf: string;
-  thingsIDontDo: string;
-  whatIHopeToFind: string;
-  whatToExpectFromMe: string;
-  myImperfections: string;
-  
-  // Images
-  profileImages: string[];
+  believeInMarriage: string;
+  hasPhysicalDisability: string;
+  physicalDisabilityDetails: string;
+  hasCriticalIllness: string;
+  criticalIllnessDetails: string;
+  introduceYourself: string;
+  describeAppearance: string;
+  lookingForAppearance: string;
+  partnerExpectations: string;
+  doNotContactMeIf: string;
 }
 
+// ✅ Convert dd/mm/yyyy → MM/DD/YYYY for database compatibility
+const formatDateForDatabase = (input: string): string | null => {
+  if (!input) return null;
+  const parts = input.split('/').map(p => p.trim());
+  if (parts.length !== 3) return null;
+
+  let [day, month, year] = parts;
+  if (year.length === 2) {
+    const currentYear = new Date().getFullYear();
+    const century = currentYear.toString().substring(0, 2);
+    year = century + year;
+  }
+
+  // Validate numbers
+  const d = parseInt(day, 10);
+  const m = parseInt(month, 10);
+  const y = parseInt(year, 10);
+  if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+  if (d < 1 || d > 31 || m < 1 || m > 12) return null;
+
+  // Pad with leading zeros
+  const formattedDate = `${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}/${y}`;
+
+  // Validate if it's a real date
+  const date = new Date(y, m - 1, d);
+  if (isNaN(date.getTime()) || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+
+  return formattedDate;
+};
+
+// ✅ Convert Date object to dd/mm/yyyy string
+const formatDateToString = (date: Date): string => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 export default function RegistrationScreen() {
+  const { width } = useWindowDimensions();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const { user } = useAuth();
-  const totalSteps = 10;
+  const { user, checkUserFlow } = useAuth();
+  const totalSteps = 3;
+
+  const isSmallScreen = width < 375;
+  const contentPadding = isSmallScreen ? 16 : 20;
+  const titleFontSize = isSmallScreen ? 20 : 24;
+  const textFontSize = isSmallScreen ? 14 : 16;
+  const inputFontSize = isSmallScreen ? 14 : 16;
+  const avatarSize = isSmallScreen ? 60 : 80;
+  const inputPaddingVertical = isSmallScreen ? 12 : 14;
+  const inputPaddingHorizontal = isSmallScreen ? 14 : 16;
+  const stepMarginBottom = isSmallScreen ? 6 : 8;
+  const descriptionMarginBottom = isSmallScreen ? 20 : 24;
   
   const [formData, setFormData] = useState<RegistrationFormData>({
+    avatar: '',
     name: '',
     username: '',
     gender: '',
-    age: '',
+    dateOfBirth: '',
     nationality: '',
-    sexualOrientation: '',
-    relationshipGoal: '',
     countryOfResidence: '',
     city: '',
     county: '',
-    constituency: '',
-    tribe: '',
-    tribeOther: '',
-    religion: '',
-    religiousness: '',
-    believeInMarriage: '',
-    heightFt: '',
-    heightIn: '',
-    weightKg: '',
-    bodyType: '',
-    complexion: '',
-    teethStatus: '',
-    hasScars: '',
-    scarsDetails: '',
-    hivStatus: '',
-    bloodGroup: '',
-    hasDisabilities: '',
-    disabilitiesDetails: '',
-    hasAllergies: '',
-    allergiesDetails: '',
-    smoking: '',
-    alcoholConsumption: '',
-    hasPets: '',
-    petsDetails: '',
-    educationLevel: '',
-    fieldOfStudy: '',
     currentProfession: '',
-    workCounty: '',
-    workConstituency: '',
-    employmentStatus: '',
-    financialStability: '',
-    canRelocate: '',
-    canDateWithDisability: '',
     maritalStatus: '',
-    hasChildren: '',
-    numberOfChildren: '',
-    agesOfChildren: '',
-    canDateWithKids: '',
+    hasKids: '',
+    numberOfKids: '',
+    hivStatus: '',
+    religion: '',
     wantKidsInFuture: '',
-    relationshipPerspective: '',
-    doNotContactIf: '',
-    thingsIDontDo: '',
-    whatIHopeToFind: '',
-    whatToExpectFromMe: '',
-    myImperfections: '',
-    profileImages: [],
+    believeInMarriage: '',
+    hasPhysicalDisability: '',
+    physicalDisabilityDetails: '',
+    hasCriticalIllness: '',
+    criticalIllnessDetails: '',
+    introduceYourself: '',
+    describeAppearance: '',
+    lookingForAppearance: '',
+    partnerExpectations: '',
+    doNotContactMeIf: '',
   });
 
-  // Check authentication on component mount
-  React.useEffect(() => {
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const fieldLabels: Record<keyof RegistrationFormData, string> = {
+    avatar: 'Avatar',
+    name: 'Name',
+    username: 'Username',
+    gender: 'Gender',
+    dateOfBirth: 'Date of birth',
+    nationality: 'Nationality',
+    countryOfResidence: 'Country of residence',
+    city: 'City',
+    county: 'County',
+    currentProfession: 'Profession',
+    maritalStatus: 'Marital status',
+    hasKids: 'Have kids',
+    numberOfKids: 'Number of kids',
+    hivStatus: 'HIV status',
+    religion: 'Religion',
+    wantKidsInFuture: 'Want kids in future',
+    believeInMarriage: 'Believe in marriage',
+    hasPhysicalDisability: 'Physical disability',
+    physicalDisabilityDetails: 'Physical disability details',
+    hasCriticalIllness: 'Critical illness',
+    criticalIllnessDetails: 'Critical illness details',
+    introduceYourself: 'Introduce yourself',
+    describeAppearance: 'Describe appearance',
+    lookingForAppearance: 'Looking for (appearance & qualities)',
+    partnerExpectations: 'Partner expectations',
+    doNotContactMeIf: 'Do not contact me if',
+  };
+
+  useEffect(() => {
     checkAuthentication();
   }, []);
 
   const checkAuthentication = async () => {
     try {
-      console.log('Checking authentication status...');
-
-      // Use AuthContext user instead of checking session directly
       if (!user) {
-        console.log('No authenticated user found - redirecting to signup');
         router.replace('/signup');
         return;
       }
 
-      console.log('User authenticated:', user.id);
-      setCurrentUser(user);
-
-      // Pre-fill email if available
-      if (user.email) {
-        setFormData((prev) => ({
-          ...prev,
-          email: user.email
-        }));
+      const savedAvatar = await AsyncStorage.getItem('selectedAvatar');
+      if (savedAvatar) {
+        setFormData(prev => ({ ...prev, avatar: savedAvatar }));
       }
-
     } catch (error) {
-      console.error('Authentication check error:', error);
-      // Redirect to signup if authentication fails
+      console.error('Auth check error:', error);
       router.replace('/signup');
     } finally {
       setAuthLoading(false);
@@ -234,12 +201,138 @@ export default function RegistrationScreen() {
   };
 
   const updateFormData = (field: keyof RegistrationFormData, value: string) => {
-    console.log('Updating field:', field, 'with value:', value);
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+
+  // ✅ Enhanced validation: all fields must be answered
+  const validateStep = (stepNumber: number): boolean => {
+    const baseRequiredFields: { [key: number]: (keyof RegistrationFormData)[] } = {
+      1: ['name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids'],
+      2: ['hivStatus', 'religion', 'believeInMarriage', 'wantKidsInFuture', 'hasPhysicalDisability', 'hasCriticalIllness'],
+      3: ['introduceYourself', 'describeAppearance', 'lookingForAppearance', 'partnerExpectations', 'doNotContactMeIf']
+    };
+
+    const fields = baseRequiredFields[stepNumber] || [];
+    for (const field of fields) {
+      const value = formData[field];
+      if (!value || value.trim() === '') {
+        Alert.alert('Required Field', `Please provide: ${fieldLabels[field]}.`);
+        return false;
+      }
+    }
+
+    // Step 1 conditionals
+    if (stepNumber === 1) {
+      if (formData.countryOfResidence === 'Kenya') {
+        if (!formData.county || formData.county.trim() === '') {
+          Alert.alert('Required Field', 'Please select your county in Kenya.');
+          return false;
+        }
+      } else if (formData.countryOfResidence) {
+        if (!formData.city || formData.city.trim() === '') {
+          Alert.alert('Required Field', 'Please enter your city.');
+          return false;
+        }
+      } else {
+        Alert.alert('Required Field', 'Please select your country of residence.');
+        return false;
+      }
+
+      if (formData.hasKids === 'Yes') {
+        const num = formData.numberOfKids.trim();
+        if (!num || isNaN(Number(num)) || Number(num) < 0) {
+          Alert.alert('Invalid Input', 'Please enter a valid number of kids (0 or more).');
+          return false;
+        }
+      }
+    }
+
+    // Step 2 conditionals
+    if (stepNumber === 2) {
+      if (formData.hasPhysicalDisability === 'Yes') {
+        if (!formData.physicalDisabilityDetails || formData.physicalDisabilityDetails.trim() === '') {
+          Alert.alert('Required Field', 'Please describe your physical disability.');
+          return false;
+        }
+      }
+      if (formData.hasCriticalIllness === 'Yes') {
+        if (!formData.criticalIllnessDetails || formData.criticalIllnessDetails.trim() === '') {
+          Alert.alert('Required Field', 'Please describe your critical illness.');
+          return false;
+        }
+      }
+    }
+
+    // Step 3: all already in base list
+
+    return true;
+  };
+
+  const parseDateOfBirth = (input: string): Date | null => {
+    const parts = input.split('/').map(p => p.trim());
+    if (parts.length !== 3) return null;
+
+    let day = parseInt(parts[0], 10);
+    let month = parseInt(parts[1], 10) - 1;
+    let year = parseInt(parts[2], 10);
+
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    if (day < 1 || day > 31 || month < 0 || month > 11) return null;
+
+    if (year < 100) {
+      const thisYear = new Date().getFullYear() % 100;
+      const century = year <= thisYear ? 2000 : 1900;
+      year = century + year;
+    }
+
+    const dob = new Date(year, month, day);
+    if (isNaN(dob.getTime())) return null;
+
+    const now = new Date();
+    const minAge = 25;
+    const maxAge = 120;
+    const minDate = new Date(now.getFullYear() - maxAge, now.getMonth(), now.getDate());
+    const maxDate = new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate());
+
+    return (dob >= minDate && dob <= maxDate) ? dob : null;
+  };
+
+  const calculateAge = (dateOfBirth: string): number => {
+    const dob = parseDateOfBirth(dateOfBirth);
+    if (!dob) return 0;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    return age;
   };
 
   const handleNext = () => {
-    console.log('Moving to step:', step + 1);
+    if (step === 1) {
+      const dobInput = formData.dateOfBirth.trim();
+      if (!dobInput) {
+        Alert.alert('Validation', 'Please enter your date of birth.');
+        return;
+      }
+      const dob = parseDateOfBirth(dobInput);
+      if (!dob) {
+        Alert.alert('Invalid Date', 'Please enter a valid date of birth in dd/mm/yyyy format.');
+        return;
+      }
+      const age = calculateAge(dobInput);
+      if (age < 25) {
+        Alert.alert('Age Requirement', 'You must be 25 years or older to register.');
+        return;
+      }
+    }
+
+    if (!validateStep(step)) {
+      return;
+    }
+
     if (step < totalSteps) {
       setStep(step + 1);
     } else {
@@ -251,232 +344,311 @@ export default function RegistrationScreen() {
     if (step > 1) {
       setStep(step - 1);
     } else {
-      router.back();
-    }
-  };
-
-  const handleImagePick = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-      selectionLimit: 5,
-    });
-
-    if (!result.canceled) {
-      console.log('Images selected:', result.assets.length);
-      const imageUris = result.assets.map((asset) => asset.uri);
-      setFormData((prev) => ({
-        ...prev,
-        profileImages: [...prev.profileImages, ...imageUris].slice(0, 5),
-      }));
+      safeBack(router);
     }
   };
 
   const handleSubmit = async () => {
-    console.log('Registration: Starting registration submission...');
     setLoading(true);
-
     try {
-      // Verify user is authenticated through AuthContext
       if (!user) {
-        console.log('Registration: No authenticated user found');
         router.replace('/signup');
         return;
       }
 
-      console.log('Registration: Using authenticated user:', user.id, 'Email:', user.email);
-
-      // Check if user already exists in users table
-      const { data: existingUser, error: checkError } = await (supabase as any)
-        .from('users')
-        .select('id')
-        .eq('auth_id', user.id)
-        .single();
-
-      if (!checkError && existingUser) {
-        console.log('User profile already exists, navigating to payment');
-        router.replace('/payment');
-        return;
+      // ✅ Convert date to MM/DD/YYYY for database
+      const formattedDate = formatDateForDatabase(formData.dateOfBirth);
+      if (!formattedDate) {
+        throw new Error('Invalid date format for database.');
       }
 
-      // Also check if email exists (for admin accounts that might have been manually created)
-      const { data: existingEmailUser, error: emailCheckError } = await (supabase as any)
-        .from('users')
-        .select('id')
-        .eq('email', user.email)
-        .single();
+      const age = calculateAge(formData.dateOfBirth);
 
-      if (!emailCheckError && existingEmailUser) {
-        console.log('Email already exists in database, navigating to payment');
-        router.replace('/payment');
-        return;
-      }
-
-      console.log('No existing user profile found, proceeding with creation');
-
-      // Prepare user data for database - ensure all fields are properly mapped
-      const userData = {
-        auth_id: user.id,  // Use auth_id as the primary key reference
+      // Prepare common data
+      const commonData = {
+        auth_id: user.id,
         email: user.email,
-        first_name: formData.name.split(' ')[0] || formData.name,
-        last_name: formData.name.split(' ').slice(1).join(' ') || null,
-        username: formData.username || null,
+        first_name: formData.name.trim().split(' ')[0] || formData.name.trim(),
+        last_name: formData.name.trim().split(' ').slice(1).join(' ') || null,
+        username: formData.username.trim() || null,
         gender: formData.gender || null,
-        age: formData.age ? parseInt(formData.age) : null,
+        age: age,
+        date_of_birth: formattedDate, // ✅ MM/DD/YYYY format
         nationality: formData.nationality || null,
-        sexual_orientation: formData.sexualOrientation || null,
-        relationship_goal: formData.relationshipGoal || null,
         country_of_residence: formData.countryOfResidence || null,
-        city: formData.city || null,
-        county: formData.county || null,
-        constituency: formData.constituency || null,
-        tribe: formData.tribe === 'Others' ? formData.tribeOther : formData.tribe,
-        tribe_other: formData.tribe === 'Others' ? formData.tribeOther : null,
-        religion: formData.religion || null,
-        religiousness: formData.religiousness || null,
-        believe_in_marriage: formData.believeInMarriage || null,
-        height_ft: formData.heightFt ? parseInt(formData.heightFt) : null,
-        height_in: formData.heightIn ? parseInt(formData.heightIn) : null,
-        weight_kg: formData.weightKg ? parseFloat(formData.weightKg) : null,
-        body_type: formData.bodyType || null,
-        complexion: formData.complexion || null,
-        teeth_status: formData.teethStatus || null,
-        has_scars_birthmarks_tattoos: formData.hasScars === 'Yes',
-        scars_birthmarks_tattoos_details: formData.scarsDetails || null,
-        hiv_status: formData.hivStatus || null,
-        blood_group: formData.bloodGroup || null,
-        has_disabilities: formData.hasDisabilities === 'Yes',
-        disabilities_details: formData.disabilitiesDetails || null,
-        has_allergies: formData.hasAllergies === 'Yes',
-        allergies_details: formData.allergiesDetails || null,
-        smoking: formData.smoking || null,
-        alcohol_consumption: formData.alcoholConsumption || null,
-        has_pets: formData.hasPets === 'Yes',
-        pets_details: formData.petsDetails || null,
-        education_level: formData.educationLevel || null,
-        field_of_study: formData.fieldOfStudy || null,
+        city: formData.countryOfResidence === 'Kenya' ? null : (formData.city || null),
+        county: formData.countryOfResidence === 'Kenya' ? (formData.county || null) : null,
         current_profession: formData.currentProfession || null,
-        work_county: formData.workCounty || null,
-        work_constituency: formData.workConstituency || null,
-        employment_status: formData.employmentStatus || null,
-        financial_stability: formData.financialStability || null,
-        can_relocate: formData.canRelocate || null,
-        can_date_with_disability: formData.canDateWithDisability || null,
         marital_status: formData.maritalStatus || null,
-        number_of_children: formData.hasChildren === 'Yes' ? (formData.numberOfChildren ? parseInt(formData.numberOfChildren) : 0) : 0,
-        children_ages: formData.agesOfChildren || null,
-        open_to_dating_with_children: formData.canDateWithKids || null,
+        number_of_children: formData.hasKids === 'Yes' ? (parseInt(formData.numberOfKids) || 0) : 0,
+        hiv_status: formData.hivStatus || null,
+        religion: formData.religion || null,
         want_kids: formData.wantKidsInFuture || null,
-        relationship_perspective: formData.relationshipPerspective || null,
-        do_not_contact_if: formData.doNotContactIf || null,
-        things_i_dont_do: formData.thingsIDontDo || null,
-        what_i_hope_to_find: formData.whatIHopeToFind || null,
-        what_to_expect_from_me: formData.whatToExpectFromMe || null,
-        imperfections: formData.myImperfections || null,
-        profile_images: formData.profileImages,
-        is_active: true,
-        is_verified: false,
-        has_paid: false,
-        payment_status: 'pending',
+        believe_in_marriage: formData.believeInMarriage || null,
+        has_physical_disability: formData.hasPhysicalDisability === 'Yes',
+        physical_disability_details: formData.hasPhysicalDisability === 'Yes' ? (formData.physicalDisabilityDetails || null) : null,
+        has_critical_illness: formData.hasCriticalIllness === 'Yes',
+        critical_illness_details: formData.hasCriticalIllness === 'Yes' ? (formData.criticalIllnessDetails || null) : null,
+        introduce_yourself: formData.introduceYourself || null,
+        describe_appearance: formData.describeAppearance || null,
+        looking_for_appearance: formData.lookingForAppearance || null,
+        partner_expectations: formData.partnerExpectations || null,
+        do_not_contact_me_if: formData.doNotContactMeIf || null,
+        avatar: formData.avatar || null,
         updated_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
       };
 
-      console.log('Prepared user data:', { ...userData, profile_images: `[${userData.profile_images.length} images]` });
-
-      // Insert user data - use regular insert since we checked for existing user above
-      const { data: insertedData, error: insertError } = await (supabase as any)
+      const { data: existingUser } = await supabase
         .from('users')
-        .insert(userData)
-        .select();
+        .select('id, has_paid, is_active')
+        .eq('auth_id', user.id)
+        .maybeSingle();
 
-      if (insertError) {
-        console.error('Insert error:', insertError);
+      if (existingUser) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ ...commonData })
+          .eq('id', existingUser.id);
 
-        // If it's a username conflict, suggest a different username
-        if (insertError.code === '23505' && insertError.message.includes('username')) {
-          Alert.alert(
-            'Username Taken',
-            'The username you chose is already taken. Please choose a different one.',
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  // Go back to step 1 to change username
-                  setStep(1);
-                }
-              }
-            ]
-          );
+        if (updateError) {
+          if (updateError.code === '23505' && updateError.message?.includes('username')) {
+            Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
+            return;
+          }
+          throw updateError;
+        }
+
+        if (existingUser.has_paid) {
+          setTimeout(async () => {
+            await checkUserFlow();
+            router.replace('/(tabs)/(home)');
+          }, 500);
+        } else if (!APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
+          // Payment disabled - auto-approve user for testing
+          await supabase
+            .from('users')
+            .update({
+              has_paid: true,
+              payment_status: 'completed',
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingUser.id);
+          setTimeout(async () => {
+            await checkUserFlow();
+            router.replace('/(tabs)/(home)');
+          }, 500);
+        } else {
+          setTimeout(async () => {
+            await checkUserFlow();
+            router.replace('/payment-new');
+          }, 500);
+        }
+      } else {
+        // Check if email already exists in users table (from previous incomplete registration)
+        const { data: existingByEmail } = await supabase
+          .from('users')
+          .select('id, has_paid, is_active')
+          .eq('email', user.email)
+          .maybeSingle();
+
+        if (existingByEmail) {
+          // Update existing user profile instead of inserting
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ ...commonData })
+            .eq('id', existingByEmail.id);
+
+          if (updateError) {
+            if (updateError.code === '23505' && updateError.message?.includes('username')) {
+              Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
+              return;
+            }
+            throw updateError;
+          }
+
+          if (existingByEmail.has_paid) {
+            setTimeout(async () => {
+              await checkUserFlow();
+              router.replace('/(tabs)/(home)');
+            }, 500);
+          } else if (!APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
+            // Payment disabled - auto-approve user for testing
+            await supabase
+              .from('users')
+              .update({
+                has_paid: true,
+                payment_status: 'completed',
+                is_active: true,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingByEmail.id);
+            setTimeout(async () => {
+              await checkUserFlow();
+              router.replace('/(tabs)/(home)');
+            }, 500);
+          } else {
+            setTimeout(async () => {
+              await checkUserFlow();
+              router.replace('/payment-new');
+            }, 500);
+          }
           return;
         }
 
-        throw insertError;
+        // New user - insert into users table
+        const insertData = {
+          ...commonData,
+          is_active: true,
+          is_verified: false,
+          has_paid: !APP_CONFIG.FEATURES.REQUIRE_PAYMENT, // Auto-approve if payment disabled
+          payment_status: APP_CONFIG.FEATURES.REQUIRE_PAYMENT ? 'pending' : 'completed',
+          created_at: new Date().toISOString(),
+        };
+
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert(insertData);
+
+        if (insertError) {
+          console.log('Insert error details:', JSON.stringify(insertError));
+          if (insertError.code === '23505') {
+            // Default to email conflict for any unique constraint violation during insert
+            // (unless it's clearly a username conflict)
+            const isUsernameConflict = insertError.message?.includes('username') || 
+                                       insertError.message?.includes('users_username_key') ||
+                                       insertError.message?.includes('Username');
+            
+            if (isUsernameConflict) {
+              Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
+              return;
+            }
+            
+            // For any other unique constraint (likely email), prompt to login
+            Alert.alert('Email Already Registered', 'An account with this email already exists. Please log in instead.', [{ text: 'OK', onPress: () => router.replace('/login') }]);
+            return;
+          }
+          throw insertError;
+        }
+
+        setTimeout(async () => {
+          await checkUserFlow();
+          if (APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
+            router.replace('/payment-new');
+          } else {
+            router.replace('/(tabs)/(home)');
+          }
+        }, 500);
       }
-
-      console.log('User profile created successfully:', insertedData);
-
-      // Registration successful
-      console.log('Registration: Profile created successfully');
-
-      // Force refresh the auth context to get updated profile data
-      console.log('Registration: Profile created successfully, refreshing auth context');
-
-      console.log('Registration: Profile created successfully, redirecting to payment');
-      // Redirect to payment after successful registration
-      setTimeout(() => {
-        router.replace('/payment');
-      }, 300);
     } catch (error: any) {
       console.error('Registration error:', error);
-      Alert.alert(
-        'Registration Error', 
-        error.message || 'Failed to create profile. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Registration Error', error?.message || 'Failed to create profile. Please try again.', [{ text: 'OK' }]);
     } finally {
       setLoading(false);
     }
   };
 
+  const getAvatarImage = (filename: string) => {
+    const avatarMap: { [key: string]: any } = {
+      '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
+      '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
+      '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
+      'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
+      'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
+      'b408535ae-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'), // Fixed typo
+      'av1.jpg': require('../assets/av1.jpg'),
+      'av2.jpg': require('../assets/av2.jpg'),
+      'av3.jpg': require('../assets/av3.jpg'),
+      'av4.jpg': require('../assets/av4.jpg'),
+      'av5.jpg': require('../assets/av5.jpg'),
+      'av6.jpg': require('../assets/av6.jpg'),
+      'men1.jpg': require('../assets/men1.jpg'),
+      'men2.jpg': require('../assets/men2.jpg'),
+      'men3.jpg': require('../assets/men3.jpg'),
+    };
+    return avatarMap[filename] || null;
+  };
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const formatted = formatDateToString(selectedDate);
+      updateFormData('dateOfBirth', formatted);
+    }
+  };
+
+  // ✅ renderStep1, renderStep2, renderStep3 remain mostly the same
+  // (no changes needed for UI logic)
+
   const renderStep1 = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Basic Information</Text>
-      <Text style={styles.stepDescription}>Let&apos;s start with the basics</Text>
+      {formData.avatar && (
+        <View style={styles.avatarPreview}>
+          <Text style={[styles.label, { fontSize: textFontSize }]}>Your Selected Avatar</Text>
+          <View style={[styles.avatarPreviewContainer, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
+            <Image
+              source={getAvatarImage(formData.avatar)}
+              style={styles.avatarPreviewImage}
+              resizeMode="cover"
+            />
+          </View>
+        </View>
+      )}
 
       <TextInput
-        style={styles.input}
-        placeholder="Full Name"
+        style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Name"
         placeholderTextColor={colors.textSecondary}
         value={formData.name}
         onChangeText={(text) => updateFormData('name', text)}
       />
 
       <TextInput
-        style={styles.input}
+        style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
         placeholder="Username"
         placeholderTextColor={colors.textSecondary}
         value={formData.username}
         onChangeText={(text) => updateFormData('username', text)}
-        autoCapitalize="none"
       />
+
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>1. Age & Identity</Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Select your date of birth (must be 25 or older).</Text>
+
+      <Pressable onPress={() => setShowDatePicker(true)}>
+        <TextInput
+          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="Select date of birth"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.dateOfBirth}
+          editable={false}
+          pointerEvents="none"
+        />
+      </Pressable>
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={parseDateOfBirth(formData.dateOfBirth) || new Date()}
+          mode="date"
+          display="default"
+          minimumDate={new Date(1900, 0, 1)}
+          maximumDate={new Date(2000, 11, 30)}
+          onChange={handleDateChange}
+        />
+      )}
 
       <DropdownPicker
         label="Gender"
         value={formData.gender}
         options={GENDERS}
         onSelect={(value) => updateFormData('gender', value)}
-        required
       />
 
       <TextInput
-        style={styles.input}
-        placeholder="Age (25 and above)"
+        style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="What do you do for a living (Profession)"
         placeholderTextColor={colors.textSecondary}
-        value={formData.age}
-        onChangeText={(text) => updateFormData('age', text)}
-        keyboardType="numeric"
+        value={formData.currentProfession}
+        onChangeText={(text) => updateFormData('currentProfession', text)}
       />
 
       <DropdownPicker
@@ -484,586 +656,205 @@ export default function RegistrationScreen() {
         value={formData.nationality}
         options={NATIONALITIES}
         onSelect={(value) => updateFormData('nationality', value)}
-        required
       />
-    </View>
-  );
-
-  const renderStep2 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Sexual & Relationship Preferences</Text>
-      <Text style={styles.stepDescription}>Help us understand what you&apos;re looking for</Text>
-
-      <DropdownPicker
-        label="Sexual Orientation"
-        value={formData.sexualOrientation}
-        options={SEXUAL_ORIENTATIONS}
-        onSelect={(value) => updateFormData('sexualOrientation', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Relationship Goal"
-        value={formData.relationshipGoal}
-        options={RELATIONSHIP_GOALS}
-        onSelect={(value) => updateFormData('relationshipGoal', value)}
-        required
-      />
-    </View>
-  );
-
-  const renderStep3 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Location Details</Text>
-      <Text style={styles.stepDescription}>Where do you live?</Text>
 
       <DropdownPicker
         label="Country of Residence"
         value={formData.countryOfResidence}
         options={COUNTRIES}
         onSelect={(value) => updateFormData('countryOfResidence', value)}
-        required
       />
 
       {formData.countryOfResidence === 'Kenya' ? (
-        <>
-          <DropdownPicker
-            label="County"
-            value={formData.county}
-            options={KENYAN_COUNTIES}
-            onSelect={(value) => {
-              updateFormData('county', value);
-              updateFormData('constituency', '');
-            }}
-            required
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Constituency"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.constituency}
-            onChangeText={(text) => updateFormData('constituency', text)}
-          />
-        </>
-      ) : formData.countryOfResidence && formData.countryOfResidence !== '' ? (
+        <DropdownPicker
+          label="County (Kenya)"
+          value={formData.county}
+          options={KENYAN_COUNTIES}
+          onSelect={(value) => updateFormData('county', value)}
+        />
+      ) : formData.countryOfResidence ? (
         <TextInput
-          style={styles.input}
+          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
           placeholder="City"
           placeholderTextColor={colors.textSecondary}
           value={formData.city}
           onChangeText={(text) => updateFormData('city', text)}
         />
       ) : null}
+
+      <DropdownPicker
+        label="Marital Status"
+        value={formData.maritalStatus}
+        options={["Single", "Divorced", "Widowed"]}
+        onSelect={(value) => updateFormData('maritalStatus', value)}
+      />
+
+      <DropdownPicker
+        label="Do you have kids?"
+        value={formData.hasKids}
+        options={["Yes", "No"]}
+        onSelect={(value) => updateFormData('hasKids', value)}
+      />
+
+      {formData.hasKids === 'Yes' && (
+        <TextInput
+          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="How many kids do you have?"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.numberOfKids}
+          onChangeText={(text) => updateFormData('numberOfKids', text)}
+          keyboardType="numeric"
+        />
+      )}
     </View>
   );
 
-  const renderStep4 = () => (
+  const renderStep2 = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Tribal & Religious Background</Text>
-      <Text style={styles.stepDescription}>Tell us about your background</Text>
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>2. Health, Faith & Family</Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Answer all questions</Text>
 
       <DropdownPicker
-        label="Tribe"
-        value={formData.tribe}
-        options={KENYAN_TRIBES}
-        onSelect={(value) => updateFormData('tribe', value)}
+        label="HIV Status"
+        value={formData.hivStatus}
+        options={["Positive", "Negative"]}
+        onSelect={(value) => updateFormData('hivStatus', value)}
       />
 
-      {formData.tribe === 'Others' && (
-        <TextInput
-          style={styles.input}
-          placeholder="Please specify your tribe"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.tribeOther}
-          onChangeText={(text) => updateFormData('tribeOther', text)}
-        />
-      )}
-
       <DropdownPicker
-        label="Religion"
+        label="Religion & Level of Faith"
         value={formData.religion}
-        options={RELIGIONS}
+        options={[
+          'Christian – Very religious',
+          'Christian – Moderately religious',
+          'Christian – Not religious',
+          'Muslim – Very religious',
+          'Muslim – Moderately religious',
+          'Muslim – Not religious',
+          'Hindu – Very religious',
+          'Hindu – Moderately religious',
+          'Hindu – Not religious',
+          'Traditional / Spiritual – Very spiritual',
+          'Traditional / Spiritual – Moderately spiritual',
+          'Traditional / Spiritual – Not spiritual',
+          'Atheist – Not religious',
+          'Other – Please specify',
+        ]}
         onSelect={(value) => updateFormData('religion', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="How religious are you?"
-        value={formData.religiousness}
-        options={RELIGIOUSNESS_LEVELS}
-        onSelect={(value) => updateFormData('religiousness', value)}
-        required
       />
 
       <DropdownPicker
         label="Do you believe in marriage?"
         value={formData.believeInMarriage}
-        options={YES_NO_OPTIONS}
+        options={["Yes I believe in marriage", "No I don't believe in marriage", "Not sure yet"]}
         onSelect={(value) => updateFormData('believeInMarriage', value)}
-        required
-      />
-    </View>
-  );
-
-  const renderStep5 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Physical Appearance</Text>
-      <Text style={styles.stepDescription}>Describe how you look</Text>
-
-      <View style={styles.row}>
-        <View style={styles.halfWidth}>
-          <TextInput
-            style={styles.input}
-            placeholder="Height (ft)"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.heightFt}
-            onChangeText={(text) => updateFormData('heightFt', text)}
-            keyboardType="numeric"
-          />
-        </View>
-        <View style={styles.halfWidth}>
-          <TextInput
-            style={styles.input}
-            placeholder="Height (in)"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.heightIn}
-            onChangeText={(text) => updateFormData('heightIn', text)}
-            keyboardType="numeric"
-          />
-        </View>
-      </View>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Weight (kg)"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.weightKg}
-        onChangeText={(text) => updateFormData('weightKg', text)}
-        keyboardType="decimal-pad"
-      />
-
-      <Text style={styles.label}>Body Type</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bodyTypeScroll}>
-        {(formData.gender === 'Male' ? MALE_BODY_TYPES : FEMALE_BODY_TYPES).map((type) => (
-          <Pressable
-            key={type.id}
-            style={[
-              styles.bodyTypeCard,
-              formData.bodyType === type.id && styles.bodyTypeCardSelected,
-            ]}
-            onPress={() => updateFormData('bodyType', type.id)}
-          >
-            <View style={styles.bodyTypeImagePlaceholder}>
-              <IconSymbol name="person" size={40} color={colors.textSecondary} />
-            </View>
-            <Text style={styles.bodyTypeLabel}>{type.label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      <DropdownPicker
-        label="Complexion"
-        value={formData.complexion}
-        options={COMPLEXIONS}
-        onSelect={(value) => updateFormData('complexion', value)}
-        required
       />
 
       <DropdownPicker
-        label="Teeth Status"
-        value={formData.teethStatus}
-        options={TEETH_STATUS_OPTIONS}
-        onSelect={(value) => updateFormData('teethStatus', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Scars / Birthmarks / Tattoos"
-        value={formData.hasScars}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('hasScars', value)}
-        required
-      />
-
-      {formData.hasScars === 'Yes' && (
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Please explain"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.scarsDetails}
-          onChangeText={(text) => updateFormData('scarsDetails', text)}
-          multiline
-          numberOfLines={3}
-        />
-      )}
-    </View>
-  );
-
-  const renderStep6 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Health & Lifestyle</Text>
-      <Text style={styles.stepDescription}>Help us understand your health and lifestyle</Text>
-
-      <DropdownPicker
-        label="HIV Status"
-        value={formData.hivStatus}
-        options={HIV_STATUS_OPTIONS}
-        onSelect={(value) => updateFormData('hivStatus', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Blood Group"
-        value={formData.bloodGroup}
-        options={BLOOD_GROUPS}
-        onSelect={(value) => updateFormData('bloodGroup', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Disabilities"
-        value={formData.hasDisabilities}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('hasDisabilities', value)}
-        required
-      />
-
-      {formData.hasDisabilities === 'Yes' && (
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Please explain"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.disabilitiesDetails}
-          onChangeText={(text) => updateFormData('disabilitiesDetails', text)}
-          multiline
-          numberOfLines={3}
-        />
-      )}
-
-      <DropdownPicker
-        label="Allergies"
-        value={formData.hasAllergies}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('hasAllergies', value)}
-        required
-      />
-
-      {formData.hasAllergies === 'Yes' && (
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Please explain"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.allergiesDetails}
-          onChangeText={(text) => updateFormData('allergiesDetails', text)}
-          multiline
-          numberOfLines={3}
-        />
-      )}
-
-      <DropdownPicker
-        label="Smoking"
-        value={formData.smoking}
-        options={YES_NO_OCCASIONALLY}
-        onSelect={(value) => updateFormData('smoking', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Alcohol Consumption"
-        value={formData.alcoholConsumption}
-        options={YES_NO_OCCASIONALLY}
-        onSelect={(value) => updateFormData('alcoholConsumption', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Pets"
-        value={formData.hasPets}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('hasPets', value)}
-        required
-      />
-
-      {formData.hasPets === 'Yes' && (
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Please explain (type of pets, etc.)"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.petsDetails}
-          onChangeText={(text) => updateFormData('petsDetails', text)}
-          multiline
-          numberOfLines={3}
-        />
-      )}
-    </View>
-  );
-
-  const renderStep7 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Education & Profession</Text>
-      <Text style={styles.stepDescription}>Tell us about your education and work</Text>
-
-      <DropdownPicker
-        label="Education Level"
-        value={formData.educationLevel}
-        options={EDUCATION_LEVELS}
-        onSelect={(value) => updateFormData('educationLevel', value)}
-        required
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Field of Study"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.fieldOfStudy}
-        onChangeText={(text) => updateFormData('fieldOfStudy', text)}
-      />
-
-      {formData.countryOfResidence === 'Kenya' && (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Current Profession"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.currentProfession}
-            onChangeText={(text) => updateFormData('currentProfession', text)}
-          />
-
-          <DropdownPicker
-            label="Work County"
-            value={formData.workCounty}
-            options={KENYAN_COUNTIES}
-            onSelect={(value) => {
-              updateFormData('workCounty', value);
-              updateFormData('workConstituency', '');
-            }}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Work Constituency"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.workConstituency}
-            onChangeText={(text) => updateFormData('workConstituency', text)}
-          />
-        </>
-      )}
-
-      <DropdownPicker
-        label="Employment Status"
-        value={formData.employmentStatus}
-        options={EMPLOYMENT_STATUS_OPTIONS}
-        onSelect={(value) => updateFormData('employmentStatus', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Financial Stability"
-        value={formData.financialStability}
-        options={FINANCIAL_STABILITY_OPTIONS}
-        onSelect={(value) => updateFormData('financialStability', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Can you relocate for love?"
-        value={formData.canRelocate}
-        options={YES_NO_MAYBE}
-        onSelect={(value) => updateFormData('canRelocate', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Can you date someone with a disability?"
-        value={formData.canDateWithDisability}
-        options={YES_NO_MAYBE}
-        onSelect={(value) => updateFormData('canDateWithDisability', value)}
-        required
-      />
-    </View>
-  );
-
-  const renderStep8 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Family & Children</Text>
-      <Text style={styles.stepDescription}>Tell us about your family situation</Text>
-
-      <DropdownPicker
-        label="Marital Status"
-        value={formData.maritalStatus}
-        options={MARITAL_STATUS_OPTIONS}
-        onSelect={(value) => updateFormData('maritalStatus', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Have Children"
-        value={formData.hasChildren}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('hasChildren', value)}
-        required
-      />
-
-      {formData.hasChildren === 'Yes' && (
-        <>
-          <TextInput
-            style={styles.input}
-            placeholder="Number of Children"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.numberOfChildren}
-            onChangeText={(text) => updateFormData('numberOfChildren', text)}
-            keyboardType="numeric"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Ages of Children (e.g., 5, 8, 12)"
-            placeholderTextColor={colors.textSecondary}
-            value={formData.agesOfChildren}
-            onChangeText={(text) => updateFormData('agesOfChildren', text)}
-          />
-        </>
-      )}
-
-      <DropdownPicker
-        label="Can you date someone with kids?"
-        value={formData.canDateWithKids}
-        options={YES_NO_OPTIONS}
-        onSelect={(value) => updateFormData('canDateWithKids', value)}
-        required
-      />
-
-      <DropdownPicker
-        label="Do you want kids in the future?"
+        label="Do you hope to have kids in the future?"
         value={formData.wantKidsInFuture}
-        options={YES_NO_OPTIONS}
+        options={["Yes", "No", "Maybe / Not sure"]}
         onSelect={(value) => updateFormData('wantKidsInFuture', value)}
-        required
       />
 
       <DropdownPicker
-        label="Perspective on Relationships"
-        value={formData.relationshipPerspective}
-        options={RELATIONSHIP_PERSPECTIVES}
-        onSelect={(value) => updateFormData('relationshipPerspective', value)}
-        required
-      />
-    </View>
-  );
-
-  const renderStep9 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Personal Boundaries & Expectations</Text>
-      <Text style={styles.stepDescription}>Help potential matches understand you better</Text>
-
-      <Text style={styles.label}>Do not contact me if...</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="e.g., you&apos;re not serious about relationships"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.doNotContactIf}
-        onChangeText={(text) => updateFormData('doNotContactIf', text)}
-        multiline
-        numberOfLines={4}
+        label="Do you have any physical disability?"
+        value={formData.hasPhysicalDisability}
+        options={["Yes", "No"]}
+        onSelect={(value) => updateFormData('hasPhysicalDisability', value)}
       />
 
-      <Text style={styles.label}>I don&apos;t do these things (e.g., threesomes)</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="List things you&apos;re not comfortable with"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.thingsIDontDo}
-        onChangeText={(text) => updateFormData('thingsIDontDo', text)}
-        multiline
-        numberOfLines={4}
-      />
-
-      <Text style={styles.label}>What I hope to find in a partner</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describe your ideal partner"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.whatIHopeToFind}
-        onChangeText={(text) => updateFormData('whatIHopeToFind', text)}
-        multiline
-        numberOfLines={4}
-      />
-
-      <Text style={styles.label}>If I&apos;m to be your partner, expect this from me</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="What can your partner expect from you?"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.whatToExpectFromMe}
-        onChangeText={(text) => updateFormData('whatToExpectFromMe', text)}
-        multiline
-        numberOfLines={4}
-      />
-
-      <Text style={styles.label}>My imperfections (e.g., impatience, anger)</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Be honest about your flaws"
-        placeholderTextColor={colors.textSecondary}
-        value={formData.myImperfections}
-        onChangeText={(text) => updateFormData('myImperfections', text)}
-        multiline
-        numberOfLines={4}
-      />
-    </View>
-  );
-
-  const renderStep10 = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Profile Images (Optional)</Text>
-      <Text style={styles.stepDescription}>
-        These images are only visible to whom you approve
-      </Text>
-
-      <Pressable style={styles.uploadButton} onPress={handleImagePick}>
-        <IconSymbol name="photo.fill" size={24} color={colors.primary} />
-        <Text style={styles.uploadButtonText}>
-          {formData.profileImages.length > 0
-            ? `${formData.profileImages.length} image(s) selected`
-            : 'Upload Images (Max 5)'}
-        </Text>
-      </Pressable>
-
-      {formData.profileImages.length > 0 && (
-        <View style={styles.imagePreviewContainer}>
-          {formData.profileImages.map((uri, index) => (
-            <View key={index} style={styles.imagePreview}>
-              <Text style={styles.imagePreviewText}>Image {index + 1}</Text>
-              <Pressable
-                onPress={() => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    profileImages: prev.profileImages.filter((_, i) => i !== index),
-                  }));
-                }}
-              >
-                <IconSymbol name="xmark" size={20} color={colors.error} />
-              </Pressable>
-            </View>
-          ))}
-        </View>
+      {formData.hasPhysicalDisability === 'Yes' && (
+        <TextInput
+          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="Please explain your physical disability"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.physicalDisabilityDetails}
+          onChangeText={(text) => updateFormData('physicalDisabilityDetails', text)}
+          multiline
+        />
       )}
 
-      <View style={styles.finalNote}>
-        <IconSymbol name="info" size={24} color={colors.accent} />
-        <Text style={styles.finalNoteText}>
-          By completing this registration, you agree to our Terms and Conditions. 
-          You&apos;ll be redirected to payment to activate your account.
-        </Text>
-      </View>
+      <DropdownPicker
+        label="Do you suffer from any critical illness?"
+        value={formData.hasCriticalIllness}
+        options={["Yes", "No"]}
+        onSelect={(value) => updateFormData('hasCriticalIllness', value)}
+      />
+
+      {formData.hasCriticalIllness === 'Yes' && (
+        <TextInput
+          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="Please explain your critical illness"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.criticalIllnessDetails}
+          onChangeText={(text) => updateFormData('criticalIllnessDetails', text)}
+          multiline
+        />
+      )}
+    </View>
+  );
+
+  const renderStep3 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>About You</Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Be honest — tell people who you are</Text>
+
+      <Text style={[styles.label, { fontSize: textFontSize }]}>1. Introduce yourself</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Include current realities, children, strengths, imperfections..."
+        placeholderTextColor={colors.textSecondary}
+        value={formData.introduceYourself}
+        onChangeText={(text) => updateFormData('introduceYourself', text)}
+        multiline
+      />
+
+      <Text style={[styles.label, { fontSize: textFontSize }]}>2. Describe your appearance</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Complexion, height, weight, body type, hairstyle, tattoos, disabilities..."
+        placeholderTextColor={colors.textSecondary}
+        value={formData.describeAppearance}
+        onChangeText={(text) => updateFormData('describeAppearance', text)}
+        multiline
+      />
+
+      <Text style={[styles.label, { fontSize: textFontSize }]}>3. What are you looking for (appearance & qualities)</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="What kind of partner are you hoping to meet? What would they get from you?"
+        placeholderTextColor={colors.textSecondary}
+        value={formData.lookingForAppearance}
+        onChangeText={(text) => updateFormData('lookingForAppearance', text)}
+        multiline
+      />
+
+      <Text style={[styles.label, { fontSize: textFontSize }]}>4. As your partner, what should you expect from me?</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="What can your partner expect from you in a relationship?"
+        placeholderTextColor={colors.textSecondary}
+        value={formData.partnerExpectations}
+        onChangeText={(text) => updateFormData('partnerExpectations', text)}
+        multiline
+      />
+
+      <Text style={[styles.label, { fontSize: textFontSize }]}>5. Do not contact me if</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="List boundaries / dealbreakers"
+        placeholderTextColor={colors.textSecondary}
+        value={formData.doNotContactMeIf}
+        onChangeText={(text) => updateFormData('doNotContactMeIf', text)}
+        multiline
+      />
     </View>
   );
 
   return (
     <SafeAreaView style={commonStyles.safeArea}>
       <View style={styles.container}>
-        {/* Show loading while checking authentication */}
         {authLoading ? (
           <View style={commonStyles.centerContent}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1073,54 +864,47 @@ export default function RegistrationScreen() {
           </View>
         ) : (
           <>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={handleBack}>
-            <IconSymbol name="chevron.left" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Registration</Text>
-          <Text style={styles.stepIndicator}>
-            {step}/{totalSteps}
-          </Text>
-        </View>
+            <View style={styles.header}>
+              <Pressable onPress={handleBack}>
+                <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              </Pressable>
+              <Text style={styles.headerTitle}>Registration</Text>
+              <Text style={styles.stepIndicator}>
+                {step}/{totalSteps}
+              </Text>
+            </View>
 
-        {/* Progress Bar */}
-        <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { width: `${(step / totalSteps) * 100}%` }]} />
-        </View>
+            <View style={styles.progressContainer}>
+              <View style={[styles.progressBar, { width: `${(step / totalSteps) * 100}%` }]} />
+            </View>
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-          {step === 4 && renderStep4()}
-          {step === 5 && renderStep5()}
-          {step === 6 && renderStep6()}
-          {step === 7 && renderStep7()}
-          {step === 8 && renderStep8()}
-          {step === 9 && renderStep9()}
-          {step === 10 && renderStep10()}
-        </ScrollView>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}>
+              <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { padding: contentPadding }]} keyboardShouldPersistTaps="handled">
+                {step === 1 && renderStep1()}
+                {step === 2 && renderStep2()}
+                {step === 3 && renderStep3()}
+              </ScrollView>
+            </KeyboardAvoidingView>
 
-        {/* Navigation Buttons */}
-        <View style={styles.buttonContainer}>
-          <Pressable
-            style={[styles.nextButton, loading && styles.buttonDisabled]}
-            onPress={handleNext}
-            disabled={loading}
-          >
-            <Text style={styles.nextButtonText}>
-              {loading ? 'Submitting...' : step === totalSteps ? 'Complete Registration' : 'Next'}
-            </Text>
-          </Pressable>
-        </View>
-      </>
+            <View style={styles.buttonContainer}>
+              <Pressable
+                style={[styles.nextButton, loading && styles.buttonDisabled]}
+                onPress={handleNext}
+                disabled={loading}
+              >
+                <Text style={styles.nextButtonText}>
+                  {loading ? 'Submitting...' : step === totalSteps ? 'Complete Registration' : 'Next'}
+                </Text>
+              </Pressable>
+            </View>
+          </>
         )}
       </View>
     </SafeAreaView>
   );
 }
 
+// ... styles remain unchanged ...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1158,7 +942,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
     paddingBottom: 40,
   },
   stepContainer: {
@@ -1197,96 +980,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  halfWidth: {
-    flex: 1,
-  },
-  bodyTypeScroll: {
-    marginBottom: 16,
-  },
-  bodyTypeCard: {
-    width: 100,
-    marginRight: 12,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-  },
-  bodyTypeCardSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.background,
-  },
-  bodyTypeImagePlaceholder: {
-    width: 60,
-    height: 80,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  bodyTypeLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  uploadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    marginBottom: 16,
-  },
-  uploadButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  imagePreviewContainer: {
-    marginBottom: 16,
-  },
-  imagePreview: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  imagePreviewText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  finalNote: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.accent,
-  },
-  finalNoteText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-  },
   buttonContainer: {
-    padding: 20,
+    padding: 16,
     backgroundColor: colors.card,
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -1305,5 +1000,24 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     backgroundColor: colors.disabled,
+  },
+  avatarPreview: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  avatarPreviewContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: colors.primary,
+  },
+  avatarPreviewImage: {
+    width: '100%',
+    height: '100%',
   },
 });

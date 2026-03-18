@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, FlatList, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
@@ -29,6 +29,10 @@ export default function DropdownPicker({
     setIsOpen(false);
   };
 
+  const handleOpenModal = () => {
+    setIsOpen(true);
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>
@@ -38,7 +42,7 @@ export default function DropdownPicker({
       
       <Pressable
         style={styles.selector}
-        onPress={() => setIsOpen(true)}
+        onPress={handleOpenModal}
       >
         <Text style={[styles.selectorText, !value && styles.placeholder]}>
           {value || placeholder}
@@ -68,10 +72,12 @@ export default function DropdownPicker({
               </Pressable>
             </View>
             
-            <ScrollView style={styles.optionsList}>
-              {options.map((option, index) => (
+            <FlatList
+              style={styles.optionsList}
+              data={options}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item: option }) => (
                 <Pressable
-                  key={index}
                   style={[
                     styles.option,
                     value === option && styles.optionSelected,
@@ -94,8 +100,8 @@ export default function DropdownPicker({
                     />
                   )}
                 </Pressable>
-              ))}
-            </ScrollView>
+              )}
+            />
           </View>
         </Pressable>
       </Modal>
@@ -138,13 +144,13 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
   },
   modalContent: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%',
+    borderRadius: 20,
+    height: '50%',
+    width: '100%',
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
   },
   modalHeader: {
@@ -161,7 +167,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   optionsList: {
-    maxHeight: 400,
+    flex: 1,
   },
   option: {
     flexDirection: 'row',

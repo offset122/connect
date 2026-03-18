@@ -1,8 +1,8 @@
-
 import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import safeBack from '@/utils/safeRouter';
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 
@@ -24,7 +24,7 @@ export default function TermsAndConditionsScreen() {
   };
 
   const handleBack = () => {
-    router.back();
+    safeBack(router);
   };
 
   return (
@@ -48,77 +48,169 @@ export default function TermsAndConditionsScreen() {
           <Text style={styles.mainTitle}>Terms & Conditions</Text>
           <Text style={styles.subtitle}>Please read and accept our terms to continue</Text>
 
-          {/* Terms Section */}
+          {/* Company Information */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="building.2.fill" size={24} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Company Information</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              Company Name: Hanna's Connect {"\n"}
+              Trading as: Hanna's Connect{"\n"}
+              Jurisdiction
+            </Text>
+          </View>
+
+          {/* Acceptance of Terms */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="checkmark.shield.fill" size={24} color={colors.primary} />
-              <Text style={styles.sectionTitle}>User Agreement</Text>
+              <Text style={styles.sectionTitle}>Acceptance of Terms</Text>
             </View>
             <Text style={styles.sectionText}>
-              By using Hanna&apos;s Connect, you agree to:
+              By accessing or using Hanna's Connect ("the Platform"), you automatically agree to be bound by these Terms and Conditions and our Privacy Policy. If you do not accept these terms, you must not use the Platform.
             </Text>
-            <View style={styles.bulletList}>
-              <BulletPoint text="Be respectful and genuine in all interactions" />
-              <BulletPoint text="Provide accurate information in your profile" />
-              <BulletPoint text="Not share inappropriate or offensive content" />
-              <BulletPoint text="Respect other users&apos; privacy and boundaries" />
-              <BulletPoint text="Not use the app for commercial purposes" />
-            </View>
           </View>
 
-          {/* Subscription Section */}
+          {/* Eligibility */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <IconSymbol name="creditcard.fill" size={24} color={colors.secondary} />
-              <Text style={styles.sectionTitle}>Subscription Details</Text>
+              <IconSymbol name="person.fill.checkmark" size={24} color={colors.secondary} />
+              <Text style={styles.sectionTitle}>Eligibility</Text>
             </View>
+            <Text style={styles.sectionText}>
+              Hanna's Connect is intended strictly for individuals aged twenty-five (25) years and above. By using the Platform, you confirm that you meet this age requirement. We reserve the right to request proof of age and suspend accounts that do not meet this criterion.
+            </Text>
+          </View>
+
+          {/* Description of Service */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="network" size={24} color={colors.accent} />
+              <Text style={styles.sectionTitle}>Description of Service</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              Hanna's Connect is a secure, community-powered platform designed to connect Kenyans and Africans locally and globally. It allows users to interact, share information, offer services, network socially or professionally, and access local or diaspora-based opportunities in both anonymous and open formats.
+            </Text>
+          </View>
+
+          {/* User Conduct */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="hand.raised.fill" size={24} color={colors.highlight} />
+              <Text style={styles.sectionTitle}>User Conduct</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              Users agree to:
+            </Text>
             <View style={styles.bulletList}>
-              <BulletPoint text="Account valid for 180 days from payment" />
-              <BulletPoint text="One-time payment of 3,000 KSH required" />
-              <BulletPoint text="Automatic renewal if you have less than 3 matches" />
-              <BulletPoint text="No refunds after profile completion" />
+              <BulletPoint text="Provide truthful and accurate information during registration." />
+              <BulletPoint text="Refrain from sharing or allowing others to access their account." />
+              <BulletPoint text="Respect the rights, privacy, and safety of other users." />
+              <BulletPoint text="Avoid abusive, fraudulent, unlawful, or exploitative behavior." />
+              <BulletPoint text="Abstain from uploading or distributing offensive, explicit, or harmful material." />
+              <BulletPoint text="No Sharing of Accounts: Sharing of accounts is strictly prohibited. If detected, involved accounts may be suspended or permanently banned to protect the integrity and security of the Platform." />
             </View>
           </View>
 
-          {/* Privacy Section */}
+          {/* Use of User Content */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="doc.on.doc.fill" size={24} color={colors.primary} />
+              <Text style={styles.sectionTitle}>Use of User Content</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              By uploading or submitting content, you grant Hanna's Connect a royalty-free, non-exclusive, worldwide, and perpetual license to use, reproduce, display, or distribute such content for operational and promotional purposes, provided that such use does not violate your privacy or misrepresent your identity.{"\n\n"}
+              We may use anonymized user accounts, profiles, or content solely for marketing or illustrative purposes to promote Hanna's Connect, in compliance with the Kenya Data Protection Act.
+            </Text>
+          </View>
+
+          {/* Use of Anonymized Data */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="chart.bar.fill" size={24} color={colors.secondary} />
+              <Text style={styles.sectionTitle}>Use of Anonymized Data</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              We may use anonymized and aggregated profile information for marketing, research, or service improvement purposes. This includes general, non-personal details such as age range, tribe, relationship goals, preferences, and broad location categories (e.g., county or region). No personal identifiers such as names, emails, phone numbers, or exact home addresses will ever be shared or disclosed.{"\n\n"}
+              By using this platform, you agree that your anonymized data may be used in this manner.
+            </Text>
+          </View>
+
+          {/* Privacy */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <IconSymbol name="lock.shield.fill" size={24} color={colors.accent} />
-              <Text style={styles.sectionTitle}>Privacy & Security</Text>
-            </View>
-            <View style={styles.bulletList}>
-              <BulletPoint text="Profile photos hidden until mutual connection" />
-              <BulletPoint text="You control your online status visibility" />
-              <BulletPoint text="Your data is encrypted and secure" />
-              <BulletPoint text="We never share your information with third parties" />
-              <BulletPoint text="You can delete your account at any time" />
-            </View>
-          </View>
-
-          {/* Safety Section */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="exclamationmark.triangle.fill" size={24} color={colors.highlight} />
-              <Text style={styles.sectionTitle}>Safety Guidelines</Text>
-            </View>
-            <View style={styles.bulletList}>
-              <BulletPoint text="Report any inappropriate behavior immediately" />
-              <BulletPoint text="Never share financial information with other users" />
-              <BulletPoint text="Meet in public places for first dates" />
-              <BulletPoint text="Trust your instincts and stay safe" />
-            </View>
-          </View>
-
-          {/* Account Management */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <IconSymbol name="person.crop.circle.badge.xmark" size={24} color={colors.error} />
-              <Text style={styles.sectionTitle}>Account Termination</Text>
+              <Text style={styles.sectionTitle}>Privacy</Text>
             </View>
             <Text style={styles.sectionText}>
-              We reserve the right to suspend or terminate accounts that violate our terms, 
-              engage in harassment, or misuse the platform. Serious violations may result in 
-              permanent bans without refund.
+              Your privacy is our priority. Please refer to our{" "}
+              <Text
+                style={{ color: colors.primary, textDecorationLine: 'underline' }}
+                onPress={() => router.push('/privacy-policy' as any)}
+              >
+                Privacy Policy
+              </Text>{" "}
+              for details on how we collect, use, and safeguard your data. Hanna's Connect complies with the Kenya Data Protection Act and relevant regulations.{"\n\n"}
+              In the event of a data breach, we will notify affected users and the relevant authorities as required by law and take appropriate action to mitigate the effects.
+            </Text>
+          </View>
+
+          {/* Payments and Refund Policy */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="creditcard.fill" size={24} color={colors.highlight} />
+              <Text style={styles.sectionTitle}>Payments and Refund Policy</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              All payments made on the Platform are final. We do not offer refunds once a transaction is completed, including in the case of voluntary account deletion.{"\n\n"}
+              By making a payment, you agree to the scope of services provided as outlined on the Platform. You also agree not to dispute valid charges or initiate chargebacks without valid cause. Fraudulent payment activity may lead to account suspension and legal action.
+            </Text>
+          </View>
+
+          {/* Disclaimers and Limitation of Liability */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="exclamationmark.triangle.fill" size={24} color={colors.error} />
+              <Text style={styles.sectionTitle}>Disclaimers and Limitation of Liability</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              Hanna's Connect is provided on an "as-is" and "as-available" basis. We do not guarantee uninterrupted access or the accuracy of user-shared information.{"\n\n"}
+              We shall not be liable for any indirect, incidental, or consequential damages arising from your use of the Platform.{"\n\n"}
+              All interactions, communications, and meetings between members are solely at your own discretion and risk. We do not conduct background checks and cannot guarantee the authenticity or intentions of any user.{"\n\n"}
+              We strongly advise against sending money to any member. Should you choose to do so, it is entirely at your own risk, and Hanna's Connect shall not be held accountable under any circumstances.{"\n\n"}
+              For the full disclaimer, please refer to our{" "}
+              <Text
+                style={{ color: colors.primary, textDecorationLine: 'underline' }}
+                onPress={() => router.push('/disclaimer' as any)}
+              >
+                Disclaimer
+              </Text>{" "}
+              page.
+            </Text>
+          </View>
+
+          {/* User Liability and Indemnification */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="shield.lefthalf.filled" size={24} color={colors.primary} />
+              <Text style={styles.sectionTitle}>User Liability and Indemnification</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              Users shall be held individually responsible for any content they upload or actions they take that result in harm, loss, or legal claims.{"\n\n"}
+              You agree to defend, indemnify, and hold harmless Hanna's Connect, its founders, employees, and affiliates from any claims, liabilities, damages, or expenses arising from your use of the Platform or your violation of these Terms.
+            </Text>
+          </View>
+
+          {/* Modifications to the Terms */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <IconSymbol name="pencil.and.outline" size={24} color={colors.secondary} />
+              <Text style={styles.sectionTitle}>Modifications to the Terms</Text>
+            </View>
+            <Text style={styles.sectionText}>
+              We reserve the right to revise, update, or modify these Terms and Conditions at any time without prior notice. Any changes will take effect immediately upon posting on the Platform.{"\n\n"}
+              Your continued use of the Platform after such modifications constitutes your acceptance of the new Terms. We encourage you to review the Terms periodically.
             </Text>
           </View>
 
@@ -148,7 +240,7 @@ export default function TermsAndConditionsScreen() {
                 )}
               </View>
               <Text style={styles.checkboxLabel}>
-                I accept the Privacy Policy
+                How it works
               </Text>
             </Pressable>
           </View>

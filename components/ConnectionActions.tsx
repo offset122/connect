@@ -36,18 +36,15 @@ export default function ConnectionActions({
       case 'none':
         return (
           <TouchableOpacity style={styles.connectButton} onPress={onConnect}>
-            <View style={styles.actionContent}>
-              <IconSymbol name="heart.fill" size={20} color={colors.card} />
-              <Text style={styles.actionText}>Connect</Text>
-            </View>
+            <IconSymbol name="heart.fill" size={24} color={colors.card} />
           </TouchableOpacity>
         );
         
       case 'pending':
         return (
           <View style={styles.pendingContainer}>
-            <Text style={styles.pendingText}>Request Sent</Text>
-            <Text style={styles.pendingSubtext}>Waiting for {targetUserName} to respond</Text>
+            <IconSymbol name="checkmark.circle.fill" size={20} color={colors.success} />
+            <Text style={styles.pendingText}>Sent</Text>
           </View>
         );
         
@@ -110,25 +107,22 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.semibold,
   },
   pendingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: colors.background,
     borderWidth: 2,
-    borderColor: colors.primary,
+    borderColor: colors.success + '40',
     borderRadius: 12,
     padding: 16,
     marginTop: 16,
-    alignItems: 'center',
   },
   pendingText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
+    fontWeight: '700',
+    color: colors.success,
     fontFamily: fontFamilies.semibold,
-  },
-  pendingSubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontFamily: fontFamilies.regular,
-    marginTop: 4,
   },
   acceptedContainer: {
     marginTop: 16,

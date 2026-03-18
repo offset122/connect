@@ -3,25 +3,19 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, Linking } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles, spacing, borderRadius, shadows } from "@/styles/commonStyles";
-import { supabase } from "@/app/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { IconSymbol } from "../../components/IconSymbol";
+import { colors, commonStyles, spacing, borderRadius, shadows } from "../../styles/commonStyles";
+import { supabase } from "../integrations/supabase/client";
+import { useAuth } from "../../contexts/AuthContext";
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as Camera from 'expo-camera';
-import { Audio } from 'expo-av';
+import { Camera } from 'expo-camera';
+import { callService, formatCallDuration } from "../../utils/callService";
+import { Audio as ExpoAudio } from 'expo-av';
 
-// WebRTC imports
-import {
-  mediaDevices,
-  RTCPeerConnection,
-  RTCSessionDescription,
-  RTCIceCandidate,
-  RTCView,
-  MediaStream,
-} from 'react-native-webrtc';
+// Sound file
+const notificationSound = require('@/assets/notification.mp3');
 
 type Message = {
   id: string;
@@ -32,15 +26,18 @@ type Message = {
   status: 'sent' | 'delivered' | 'read';
   media_type?: 'image' | 'document';
   media_url?: string;
+  is_deleted?: boolean;
 };
 
-type CallState = {
-  isConnected: boolean;
-  localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
-  isCallInitiator: boolean;
-  callId: string | null;
+type CallHistoryData = {
+  call_id: string;
+  call_type: 'voice' | 'video';
+  direction: 'incoming' | 'outgoing';
+  status: 'ringing' | 'accepted' | 'rejected' | 'missed' | 'ended';
+  duration?: number;
 };
+
+// CallState is now imported from callService
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams();
@@ -52,44 +49,126 @@ export default function ChatScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [otherUser, setOtherUser] = useState<any>(null);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
-  const [isInCall, setIsInCall] = useState(false);
-  const [callType, setCallType] = useState<'voice' | 'video' | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const [callTimer, setCallTimer] = useState<number | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-  const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const [isOtherUserOnline, setIsOtherUserOnline] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const cameraRef = useRef<any>(null);
+  const notificationSoundRef = useRef<ExpoAudio.Sound | null>(null);
+  const [callHistory, setCallHistory] = useState<any[]>([]);
+  const [callNotifications, setCallNotifications] = useState<any[]>([]);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [hasBlocked, setHasBlocked] = useState(false);
 
-  // Voice Call Enhancements
-  const [audioPermission, setAudioPermission] = useState<boolean | null>(null);
-  const [audioSession, setAudioSession] = useState<any>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioInputDevice, setAudioInputDevice] = useState<string>('default');
-  const [audioOutputDevice, setAudioOutputDevice] = useState<string>('speaker');
-  const [networkQuality, setNetworkQuality] = useState<'excellent' | 'good' | 'poor' | 'unknown'>('unknown');
-  const [isCallWaiting, setIsCallWaiting] = useState(false);
-  const [callReconnecting, setCallReconnecting] = useState(false);
+  // Play notification sound for new messages
+  const playNotificationSound = async () => {
+    try {
+      if (notificationSoundRef.current) {
+        await notificationSoundRef.current.unloadAsync();
+      }
+      const { sound } = await ExpoAudio.Sound.createAsync(notificationSound, {
+        shouldPlay: true,
+      });
+      notificationSoundRef.current = sound;
+    } catch (error) {
+      console.warn('Error playing notification sound:', error);
+    }
+  };
 
-  // WebRTC state
-  const [peerConnection, setPeerConnection] = useState<RTCPeerConnection | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [isCallConnected, setIsCallConnected] = useState(false);
-  const [isCallInitiator, setIsCallInitiator] = useState(false);
-  const [callId, setCallId] = useState<string | null>(null);
-  const localVideoRef = useRef<any>(null);
-  const remoteVideoRef = useRef<any>(null);
+  // Handle blocking the user
+  const handleBlockUser = async () => {
+    if (!user || !otherUser) return;
+
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${otherUser.first_name}? This will prevent them from contacting you.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await (supabase as any)
+                .from('blocked_users')
+                .insert({
+                  blocker_id: user.id,
+                  blocked_id: otherUser.id,
+                });
+
+              if (error) throw error;
+
+              Alert.alert('User Blocked', `${otherUser.first_name} has been blocked.`);
+              // Navigate back to prevent further interaction
+              router.back();
+            } catch (error: any) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+
+  // Call service for incoming calls
+  useEffect(() => {
+    // Initialize callService
+    callService.init(supabase as any, user?.id || '', {
+      onStateChange: () => {}, // no state callback
+      onIncomingCall: (caller) => {
+        // Handle incoming call - navigate to call screen
+        console.log('Incoming call from:', caller);
+        const callType = caller.callType || 'voice';
+        router.push({
+          pathname: callType === 'video' ? '/call/video-call' : '/call/voice-call',
+          params: {
+            remoteUserId: caller.from,
+            callDirection: 'incoming',
+            callId: caller.callId,
+          },
+        });
+      },
+    });
+
+    return () => {
+      callService.destroy();
+    };
+  }, [user?.id]);
+
+  const checkBlockedStatus = useCallback(async () => {
+    if (!user || !id) return;
+
+    try {
+      // Check if current user has blocked the other user
+      const { data: blockedByMe } = await (supabase as any)
+        .from('blocked_users')
+        .select('id')
+        .eq('blocker_id', user.id)
+        .eq('blocked_id', id)
+        .maybeSingle();
+
+      // Check if other user has blocked current user
+      const { data: blockedByOther } = await (supabase as any)
+        .from('blocked_users')
+        .select('id')
+        .eq('blocker_id', id)
+        .eq('blocked_id', user.id)
+        .maybeSingle();
+
+      setHasBlocked(!!blockedByMe);
+      setIsBlocked(!!blockedByOther);
+    } catch (error) {
+      console.error('Error checking blocked status:', error);
+    }
+  }, [user?.id, id]);
 
   const fetchMessages = useCallback(async () => {
     try {
       setLoading(true);
-      
+
       if (!user) {
         Alert.alert('Error', 'Please log in to view messages');
         router.replace('/login');
@@ -97,6 +176,9 @@ export default function ChatScreen() {
       }
 
       setCurrentUserId(user.id);
+
+      // Check blocked status
+      await checkBlockedStatus();
 
       // Fetch other user details
       const { data: userData, error: userDataError } = await (supabase as any)
@@ -109,11 +191,12 @@ export default function ChatScreen() {
       setOtherUser(userData);
       setIsOtherUserOnline(userData.online_status || false);
 
-      // Fetch messages between current user and other user
+      // Fetch messages between current user and other user (exclude deleted messages)
       const { data: messagesData, error: messagesError } = await (supabase as any)
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${user.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${user.id})`)
+        .eq('is_deleted', false)
         .order('created_at', { ascending: true });
 
       if (messagesError) throw messagesError;
@@ -136,7 +219,7 @@ export default function ChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, checkBlockedStatus]);
 
   useEffect(() => {
     fetchMessages();
@@ -157,18 +240,91 @@ export default function ChatScreen() {
           if (payload.new.sender_id === id) {
             setMessages((prev) => [...prev, payload.new as Message]);
             scrollToBottom();
+            // Play notification sound for new messages
+            playNotificationSound();
           }
         }
       )
       .subscribe();
 
+    // Subscribe to blocked status changes
+    const blockedChannel = supabase
+      .channel('blocked_status')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'blocked_users',
+          filter: `blocker_id=eq.${user.id}`,
+        },
+        () => {
+          checkBlockedStatus();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'blocked_users',
+          filter: `blocked_id=eq.${user.id}`,
+        },
+        () => {
+          checkBlockedStatus();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'blocked_users',
+          filter: `blocker_id=eq.${id}`,
+        },
+        () => {
+          checkBlockedStatus();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'blocked_users',
+          filter: `blocked_id=eq.${id}`,
+        },
+        () => {
+          checkBlockedStatus();
+        }
+      )
+      .subscribe();
+
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(blockedChannel);
+      // Cleanup notification sound
+      if (notificationSoundRef.current) {
+        notificationSoundRef.current.unloadAsync();
+      }
     };
   }, [id, currentUserId, fetchMessages]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || !user || sending) return;
+
+    // Check blocked status from database to ensure up-to-date
+    const { data: blockedCheck } = await (supabase as any)
+      .from('blocked_users')
+      .select('id')
+      .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${id}),and(blocker_id.eq.${id},blocked_id.eq.${user.id})`)
+      .maybeSingle();
+
+    if (blockedCheck) {
+      Alert.alert('Cannot Send Message', 'You cannot send messages to this user.');
+      return;
+    }
 
     const messageContent = newMessage.trim();
     setNewMessage('');
@@ -184,6 +340,7 @@ export default function ChatScreen() {
           receiver_id: id,
           content: messageContent,
           status: 'sent',
+          is_deleted: false,
         })
         .select()
         .single();
@@ -205,10 +362,29 @@ export default function ChatScreen() {
     }
   };
 
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('messages')
+        .update({ is_deleted: true })
+        .eq('id', messageId)
+        .eq('sender_id', user?.id); // Only allow sender to delete their own messages
+
+      if (error) throw error;
+
+      // Remove message from local state
+      setMessages((prev) => prev.filter(msg => msg.id !== messageId));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      Alert.alert('Error', 'Failed to delete message. Please try again.');
+    }
+  };
+
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -227,6 +403,7 @@ export default function ChatScreen() {
   const takePhoto = async () => {
     try {
       const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -272,15 +449,18 @@ export default function ChatScreen() {
       const fileName = `chat_media_${currentUserId}_${timestamp}_${randomId}.${fileExtension}`;
       const filePath = `messages/${type}/${fileName}`;
       
-      // Fetch the file as blob for upload
+      // Fetch the file as blob for upload. Read the response once.
       const response = await fetch(uri);
       const blob = await response.blob();
+      // Convert blob to ArrayBuffer safely (don't read response twice)
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
       
       // Upload to Supabase Storage using the 'media' bucket
       const { data: uploadData, error: uploadError } = await (supabase as any)
         .storage
         .from('media')
-        .upload(filePath, blob, {
+        .upload(filePath, uint8Array, {
           contentType: type === 'image' ? 'image/jpeg' : 'application/pdf',
           upsert: false
         });
@@ -299,7 +479,7 @@ export default function ChatScreen() {
       }
 
       // Get public URL from Supabase Storage
-      const { data: urlData, error: urlError } = (supabase as any)
+      const { data: urlData, error: urlError } = await (supabase as any)
         .storage
         .from('media')
         .getPublicUrl(filePath);
@@ -322,7 +502,7 @@ export default function ChatScreen() {
 
       const { data, error } = await (supabase as any)
         .from('messages')
-        .insert(messageData)
+        .insert({ ...messageData, is_deleted: false })
         .select()
         .single();
 
@@ -347,104 +527,33 @@ export default function ChatScreen() {
         `${otherUser?.first_name || 'This user'} is currently offline. Voice calls may not be available.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Try Anyway', onPress: () => startEnhancedVoiceCall() }
+          { text: 'Try Anyway', onPress: () => startVoiceCall() }
         ]
       );
       return;
     }
 
-    // Request audio permissions
-    const hasPermission = await requestAudioPermissions();
-    
-    if (hasPermission) {
-      // User is online and has permissions, start enhanced voice call
-      await startEnhancedVoiceCall();
+    try {
+      await startVoiceCall();
+    } catch (error: any) {
+      console.error('Voice call error:', error);
+      Alert.alert('Call Error', error?.message || 'Failed to start voice call');
     }
   };
 
-  const requestAudioPermissions = async (): Promise<boolean> => {
+  const startVoiceCall = async () => {
     try {
-      // Request audio permissions for voice calls
-      const { status } = await Audio.requestPermissionsAsync();
-      setAudioPermission(status === 'granted');
-      
-      if (status !== 'granted') {
-        Alert.alert(
-          'Audio Permission Required',
-          'Audio access is needed for voice calls. Please enable audio permissions in your device settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Settings', onPress: () => Alert.alert('Settings', 'Please enable audio permissions in your device settings.') }
-          ]
-        );
-        return false;
-      }
-      
-      // Set up audio session
-      const audioSession = await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      // Navigate to dedicated voice call screen
+      router.push({
+        pathname: '/call/voice-call',
+        params: {
+          remoteUserId: typeof id === 'string' ? id : id[0],
+          callDirection: 'outgoing',
+        },
       });
-      
-      setAudioSession(audioSession);
-      return true;
-    } catch (error) {
-      console.error('Error requesting audio permissions:', error);
-      setAudioPermission(false);
-      return false;
-    }
-  };
-
-  const startEnhancedVoiceCall = async () => {
-    if (!audioPermission) {
-      Alert.alert('Audio Permission Required', 'Please enable audio permissions to make voice calls.');
-      return;
-    }
-
-    setIsInCall(true);
-    setCallType('voice');
-    setCallDuration(0);
-    setIsMuted(false);
-    setIsSpeakerOn(true); // Default to speaker for better quality
-    setIsCallConnected(false);
-    setIsCallWaiting(true);
-    setNetworkQuality('unknown');
-    setCallReconnecting(false);
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    try {
-      // Simulate connection process with loading states
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setIsCallWaiting(false);
-      setIsCallConnected(true);
-      setNetworkQuality('good');
-      
-      // Start call timer
-      const timer = setInterval(() => {
-        setCallDuration(prev => {
-          const newDuration = prev + 1;
-          
-          // Simulate network quality monitoring
-          if (newDuration > 0 && newDuration % 30 === 0) {
-            const qualities = ['excellent', 'good', 'poor'] as const;
-            const randomQuality = qualities[Math.floor(Math.random() * qualities.length)];
-            setNetworkQuality(randomQuality);
-          }
-          
-          return newDuration;
-        });
-      }, 1000);
-      setCallTimer(timer);
-      
-      console.log(`Starting enhanced voice call with ${otherUser?.first_name || 'user'}`);
-    } catch (error) {
-      console.error('Error starting voice call:', error);
-      Alert.alert('Call Error', 'Failed to start voice call. Please try again.');
-      handleEndCall();
+    } catch (error: any) {
+      console.error('Voice call error:', error);
+      Alert.alert('Call Error', error?.message || 'Failed to start voice call');
     }
   };
 
@@ -465,75 +574,30 @@ export default function ChatScreen() {
       return;
     }
 
-    // Request camera permissions for video call
-    const { status: cameraStatus } = await (Camera as any).requestCameraPermissionsAsync?.() || await (Camera as any).requestPermissionsAsync?.();
-    setCameraPermission(cameraStatus === 'granted');
-
-    if (cameraStatus !== 'granted') {
-      Alert.alert(
-        'Camera Permission Required',
-        'Camera access is needed for video calls. Please enable camera permissions in your device settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Settings', onPress: () => Alert.alert('Settings', 'Please enable camera permissions in your device settings.') }
-        ]
-      );
-      return;
+    try {
+      await startVideoCall();
+    } catch (error: any) {
+      console.error('Video call error:', error);
+      Alert.alert('Call Error', error?.message || 'Failed to start video call');
     }
-
-    // User has permission and is online, start video call
-    setIsInCall(true);
-    setCallType('video');
-    setCallDuration(0);
-    setIsMuted(false);
-    setIsSpeakerOn(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Start call timer
-    const timer = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-    setCallTimer(timer);
-    
-    console.log(`Starting video call with ${otherUser?.first_name || 'user'}`);
   };
 
-  const handleEndCall = () => {
-    if (callTimer) {
-      clearInterval(callTimer);
-      setCallTimer(null);
+  const startVideoCall = async () => {
+    try {
+      // Navigate to dedicated video call screen
+      router.push({
+        pathname: '/call/video-call',
+        params: {
+          remoteUserId: typeof id === 'string' ? id : id[0],
+          callDirection: 'outgoing',
+        },
+      });
+    } catch (error: any) {
+      console.error('Video call error:', error);
+      Alert.alert('Call Error', error?.message || 'Failed to start video call');
     }
-    setIsInCall(false);
-    setCallType(null);
-    setCallDuration(0);
-    setIsMuted(false);
-    setIsSpeakerOn(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
   };
 
-  const handleToggleMute = () => {
-    setIsMuted(!isMuted);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const handleToggleSpeaker = () => {
-    setIsSpeakerOn(!isSpeakerOn);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const getVoiceCallStatus = () => {
-    if (isCallWaiting) return 'Connecting...';
-    if (!isCallConnected) return 'Not connected';
-    if (isMuted) return 'Muted';
-    if (callReconnecting) return 'Reconnecting...';
-    return 'Connected';
-  };
-
-  const formatCallDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const openImage = (url: string) => {
     setSelectedImage(url);
@@ -574,6 +638,7 @@ export default function ChatScreen() {
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
   };
+
 
   const renderDateSeparator = (currentMsg: Message, prevMsg: Message | null) => {
     if (!prevMsg) return formatDate(currentMsg.created_at);
@@ -620,8 +685,10 @@ export default function ChatScreen() {
                   <Text style={styles.headerName}>
                     {otherUser?.first_name || 'User'}
                   </Text>
-                  {otherUser?.online_status && (
+                  {isOtherUserOnline ? (
                     <Text style={styles.onlineText}>Active now</Text>
+                  ) : (
+                    <Text style={styles.offlineText}>Offline</Text>
                   )}
                 </View>
               </View>
@@ -646,6 +713,13 @@ export default function ChatScreen() {
                   <IconSymbol name="video.fill" size={20} color={colors.primary} />
                 </View>
               </Pressable>
+              {!hasBlocked && (
+                <Pressable onPress={handleBlockUser} style={styles.headerButton}>
+                  <View style={styles.headerButtonContainer}>
+                    <IconSymbol name="person.slash.fill" size={20} color={colors.error} />
+                  </View>
+                </Pressable>
+              )}
             </View>
           ),
           headerStyle: {
@@ -659,8 +733,8 @@ export default function ChatScreen() {
       
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 75}
       >
         <ScrollView
           ref={scrollViewRef}
@@ -700,12 +774,25 @@ export default function ChatScreen() {
                     isCurrentUser ? styles.messageContainerRight : styles.messageContainerLeft,
                   ]}
                 >
-                  <View
+                  <Pressable
                     style={[
                       styles.messageBubble,
                       isCurrentUser ? styles.messageBubbleRight : styles.messageBubbleLeft,
                       !isCurrentUser && isGrouped && styles.messageBubbleTopMargin,
                     ]}
+                    onLongPress={() => {
+                      if (isCurrentUser) {
+                        Alert.alert(
+                          'Delete Message',
+                          'Are you sure you want to delete this message?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => handleDeleteMessage(message.id) }
+                          ]
+                        );
+                      }
+                    }}
+                    delayLongPress={500}
                   >
                     {/* Media Content */}
                     {message.media_type === 'image' && message.media_url && (
@@ -737,8 +824,80 @@ export default function ChatScreen() {
                       </Pressable>
                     )}
 
+                    {/* Call History Content */}
+                    {!message.media_type && message.content.startsWith('[Call:') && (() => {
+                      try {
+                        const callDataStr = message.content.slice(6, -1); // Remove [Call: and ]
+                        const callData: CallHistoryData = JSON.parse(callDataStr);
+                        const isMissed = callData.status === 'missed';
+                        const isOutgoing = callData.direction === 'outgoing';
+                        const callIcon = callData.call_type === 'video' ? 'video.fill' : 'phone.fill';
+                        const callTypeText = callData.call_type === 'video' ? 'video call' : 'voice call';
+                        const callText = isMissed
+                          ? `Missed ${callTypeText}`
+                          : callData.status === 'ended'
+                          ? (callData.duration ? `${callTypeText} (${formatCallDuration(callData.duration)})` : `${callTypeText} ended`)
+                          : callData.status === 'accepted'
+                          ? `${callTypeText} answered`
+                          : callData.status === 'ringing'
+                          ? (isOutgoing ? `Outgoing ${callTypeText}` : `Incoming ${callTypeText}`)
+                          : callTypeText;
+
+                        return (
+                          <View style={styles.callHistoryContainer}>
+                            <View style={[styles.callIconContainer, isMissed && styles.missedCallIcon]}>
+                              <IconSymbol
+                                name={callIcon}
+                                size={16}
+                                color={isMissed ? colors.error : (isCurrentUser ? colors.card : colors.primary)}
+                              />
+                            </View>
+                            {callData.direction === 'incoming' && (
+                              <View style={styles.callDirectionContainer}>
+                                <IconSymbol
+                                  name="arrow.down.left"
+                                  size={12}
+                                  color={isMissed ? colors.error : colors.textSecondary}
+                                />
+                              </View>
+                            )}
+                            {callData.direction === 'outgoing' && (
+                              <View style={styles.callDirectionContainer}>
+                                <IconSymbol
+                                  name="arrow.up.right"
+                                  size={12}
+                                  color={colors.textSecondary}
+                                />
+                              </View>
+                            )}
+                            <Text
+                              style={[
+                                styles.callHistoryText,
+                                isCurrentUser ? styles.messageTextRight : styles.messageTextLeft,
+                                isMissed && styles.missedCallText,
+                              ]}
+                            >
+                              {callText}
+                            </Text>
+                          </View>
+                        );
+                      } catch (e) {
+                        // Fallback to regular text if parsing fails
+                        return (
+                          <Text
+                            style={[
+                              styles.messageText,
+                              isCurrentUser ? styles.messageTextRight : styles.messageTextLeft,
+                            ]}
+                          >
+                            {message.content}
+                          </Text>
+                        );
+                      }
+                    })()}
+
                     {/* Text Content */}
-                    {!message.media_type && (
+                    {!message.media_type && !message.content.startsWith('[Call:') && (
                       <Text
                         style={[
                           styles.messageText,
@@ -771,7 +930,7 @@ export default function ChatScreen() {
                         )}
                       </View>
                     )}
-                  </View>
+                  </Pressable>
                 </View>
               </View>
             );
@@ -808,41 +967,78 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        <View style={styles.inputContainer}>
-          <View style={styles.inputWrapper}>
-            {/* Media Attachment Button */}
+        {isBlocked ? (
+          <View style={styles.blockedContainer}>
+            <Text style={styles.blockedText}>
+              You cannot send messages to this user because they have blocked you.
+            </Text>
+          </View>
+        ) : hasBlocked ? (
+          <View style={styles.blockedContainer}>
+            <Text style={styles.blockedText}>
+              You have blocked this user. Unblock them to send messages.
+            </Text>
             <Pressable
-              style={styles.mediaButton}
-              onPress={() => setShowMediaPicker(true)}
-            >
-              <IconSymbol name="plus.circle.fill" size={32} color={colors.primary} />
-            </Pressable>
+              style={styles.unblockButton}
+              onPress={async () => {
+                try {
+                  const { error } = await (supabase as any)
+                    .from('blocked_users')
+                    .delete()
+                    .eq('blocker_id', user?.id)
+                    .eq('blocked_id', id);
 
-            <TextInput
-              style={styles.input}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.textSecondary}
-              value={newMessage}
-              onChangeText={setNewMessage}
-              multiline
-              maxLength={1000}
-            />
-            <Pressable
-              style={[
-                styles.sendButton,
-                (!newMessage.trim() || sending) && styles.sendButtonDisabled,
-              ]}
-              onPress={handleSend}
-              disabled={!newMessage.trim() || sending}
+                  if (error) throw error;
+
+                  setHasBlocked(false);
+                  Alert.alert('User Unblocked', 'You can now send messages to this user.');
+                } catch (error: any) {
+                  console.error('Error unblocking user:', error);
+                  Alert.alert('Error', 'Failed to unblock user.');
+                }
+              }}
             >
-              {sending ? (
-                <ActivityIndicator size="small" color={colors.card} />
-              ) : (
-                <IconSymbol name="arrow.up" size={24} color={colors.card} />
-              )}
+              <Text style={styles.unblockButtonText}>Unblock</Text>
             </Pressable>
           </View>
-        </View>
+        ) : (
+          <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
+              {/* Media Attachment Button */}
+              <Pressable
+                style={styles.mediaButton}
+                onPress={() => setShowMediaPicker(true)}
+              >
+                <IconSymbol name="plus.circle.fill" size={32} color={colors.primary} />
+              </Pressable>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Type a message..."
+                placeholderTextColor={colors.textSecondary}
+                value={newMessage}
+                onChangeText={setNewMessage}
+                multiline
+                maxLength={1000}
+                textAlignVertical="top"
+              />
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  (!newMessage.trim() || sending) && styles.sendButtonDisabled,
+                ]}
+                onPress={handleSend}
+                disabled={!newMessage.trim() || sending}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color={colors.card} />
+                ) : (
+                  <IconSymbol name="arrow.up" size={24} color={colors.card} />
+                )}
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Media Picker Modal */}
         <Modal
@@ -910,133 +1106,6 @@ export default function ChatScreen() {
         </Modal>
       </KeyboardAvoidingView>
 
-      {/* Call UI Modal */}
-      <Modal
-        visible={isInCall && callType !== null}
-        animationType="fade"
-        transparent={true}
-        presentationStyle="overFullScreen"
-        onRequestClose={() => {/* Optional: Handle back button */}}
-      >
-        <View style={styles.callOverlay}>
-          <View style={styles.callContainer}>
-            {/* Call Header */}
-            <View style={styles.callHeader}>
-              <Text style={styles.callHeaderText}>
-                {callType === 'video' ? 'Video Call' : 'Voice Call'}
-              </Text>
-              <Text style={styles.callDurationText}>
-                {formatCallDuration(callDuration)}
-              </Text>
-            </View>
-
-            {/* User Info */}
-            <View style={styles.callUserInfo}>
-              {otherUser?.avatar ? (
-                <Image source={{ uri: otherUser.avatar }} style={styles.callAvatar} />
-              ) : (
-                <View style={[styles.callAvatar, styles.defaultCallAvatar]}>
-                  <Text style={styles.callAvatarText}>
-                    {otherUser?.first_name?.charAt(0) || 'U'}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.callUserName}>
-                {otherUser?.first_name || 'User'}
-              </Text>
-              <Text style={[
-                styles.callStatusText,
-                !otherUser?.online_status && styles.callStatusOffline
-              ]}>
-                {isCallWaiting ? 'Connecting...' :
-                 callType === 'voice' && isCallConnected ? getVoiceCallStatus() :
-                 isMuted ? 'Muted' :
-                 !otherUser?.online_status ? 'User offline - call may not connect' :
-                 callType === 'video' && cameraPermission === false ? 'Camera permission needed' : 'Connected'}
-              </Text>
-
-              {/* Network Quality Indicator */}
-              {callType === 'voice' && isCallConnected && (
-                <View style={styles.networkQualityContainer}>
-                  <View style={[styles.networkIndicator, styles[`network_${networkQuality}`]]} />
-                  <Text style={styles.networkQualityText}>
-                    {networkQuality === 'excellent' ? 'Excellent' :
-                     networkQuality === 'good' ? 'Good' :
-                     networkQuality === 'poor' ? 'Poor' : 'Unknown'} Network
-                  </Text>
-                </View>
-              )}
-
-              {/* Reconnection Status */}
-              {callReconnecting && (
-                <View style={styles.reconnectingContainer}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.reconnectingText}>Reconnecting...</Text>
-                </View>
-              )}
-              
-              {/* Audio Permission Warning */}
-              {callType === 'voice' && audioPermission === false && (
-                <View style={styles.permissionWarning}>
-                  <IconSymbol name="mic.slash.fill" size={20} color={colors.warning} />
-                  <Text style={styles.permissionWarningText}>Audio access required for voice calls</Text>
-                </View>
-              )}
-
-              {/* Camera Permission Warning */}
-              {callType === 'video' && cameraPermission === false && (
-                <View style={styles.permissionWarning}>
-                  <IconSymbol name="video.slash.fill" size={20} color={colors.warning} />
-                  <Text style={styles.permissionWarningText}>Camera access required for video calls</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Call Controls */}
-            <View style={styles.callControls}>
-              {/* Mute Button */}
-              <Pressable
-                style={[
-                  styles.callControlButton,
-                  isMuted && styles.callControlButtonActive
-                ]}
-                onPress={handleToggleMute}
-              >
-                <IconSymbol
-                  name={isMuted ? "mic.slash.fill" : "mic.fill"}
-                  size={24}
-                  color={isMuted ? colors.error : colors.card}
-                />
-              </Pressable>
-
-              {/* End Call Button */}
-              <Pressable
-                style={styles.endCallButton}
-                onPress={handleEndCall}
-              >
-                <IconSymbol name="phone.down.fill" size={24} color={colors.card} />
-              </Pressable>
-
-              {/* Speaker Button (Voice Call Only) */}
-              {callType === 'voice' && (
-                <Pressable
-                  style={[
-                    styles.callControlButton,
-                    isSpeakerOn && styles.callControlButtonActive
-                  ]}
-                  onPress={handleToggleSpeaker}
-                >
-                  <IconSymbol
-                    name={isSpeakerOn ? "speaker.wave.3.fill" : "speaker.fill"}
-                    size={24}
-                    color={isSpeakerOn ? colors.success : colors.card}
-                  />
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1098,6 +1167,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.success,
     fontWeight: '500',
+  },
+  offlineText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '400',
   },
   backButton: {
     padding: 8,
@@ -1307,6 +1381,37 @@ const styles = StyleSheet.create({
   downloadIcon: {
     padding: 8,
   },
+
+  // Call History Styles
+  callHistoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  callDirectionContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  callIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  missedCallIcon: {
+    backgroundColor: colors.error + '20',
+  },
+  callHistoryText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  missedCallText: {
+    color: colors.error,
+  },
   
   // Typing Indicator
   typingIndicator: {
@@ -1351,12 +1456,12 @@ const styles = StyleSheet.create({
   // Enhanced Input Area
   inputContainer: {
     backgroundColor: colors.card,
-    borderTopWidth: 0,
-    borderTopColor: 'transparent',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     ...shadows.lg,
-    elevation: 8,
+    elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
@@ -1504,159 +1609,38 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
   },
 
-  // Call UI Styles
-  callOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.background,
-    zIndex: 1000,
-  },
-  callContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl * 2,
-    paddingBottom: spacing.xl * 3,
-  },
-  callHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  callHeaderText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  callDurationText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.primary,
-  },
-  callUserInfo: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    gap: spacing.lg,
-  },
-  callAvatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    resizeMode: 'cover',
-  },
-  defaultCallAvatar: {
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  callAvatarText: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: colors.card,
-  },
-  callUserName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  callStatusText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  callStatusOffline: {
-    color: colors.warning,
-    fontWeight: '600',
-  },
-  callControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  callControlButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+
+  // Blocked user styles
+  blockedContainer: {
     backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  callControlButtonActive: {
-    backgroundColor: colors.primary + '20',
-    borderColor: colors.primary,
-  },
-  endCallButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.error,
-    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
     alignItems: 'center',
     ...shadows.lg,
-    elevation: 8,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
-  permissionWarning: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.warning + '20',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: borderRadius.md,
-    marginTop: 8,
-  },
-  permissionWarningText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.warning,
-  },
-
-  // Enhanced Voice Call Styles
-  networkQualityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  networkIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  network_excellent: {
-    backgroundColor: colors.success,
-  },
-  network_good: {
-    backgroundColor: colors.primary,
-  },
-  network_poor: {
-    backgroundColor: colors.warning,
-  },
-  network_unknown: {
-    backgroundColor: colors.textSecondary,
-  },
-  networkQualityText: {
-    fontSize: 14,
-    fontWeight: '500',
+  blockedText: {
+    fontSize: 16,
     color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
-  reconnectingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
+  unblockButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    ...shadows.sm,
   },
-  reconnectingText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.primary,
+  unblockButtonText: {
+    color: colors.card,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

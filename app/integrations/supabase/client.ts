@@ -17,3 +17,29 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     detectSessionInUrl: true,
   },
 })
+
+// Helper function to get avatar URL
+export const getAvatarUrlFromStorage = (filename: string): string => {
+  try {
+    const { data } = supabase.storage.from('photos').getPublicUrl(filename);
+    return data?.publicUrl || '';
+  } catch (error) {
+    console.error('Error generating avatar URL:', error);
+    return '';
+  }
+};
+
+// Helper function to list avatar files in storage
+export const listAvatarFiles = async () => {
+  try {
+    const { data, error } = await supabase.storage.from('photos').list();
+    if (error) {
+      console.error('Error listing avatar files:', error);
+      return null;
+    }
+    return data;
+  } catch (error) {
+    console.error('Exception listing avatar files:', error);
+    return null;
+  }
+};

@@ -6,16 +6,19 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import PhoneRequestManager from "@/components/PhoneRequestManager";
 
 type Notification = {
   id: string;
-  type: 'match' | 'message' | 'connection' | 'system';
+  type: 'match' | 'message' | 'connection' | 'system' | 'phone_request' | 'phone_response' | 'missed_call' | 'connection_accepted' | 'connection_declined';
   title: string;
   description: string;
   created_at: string;
   read: boolean;
   user_id: string;
   related_user_id?: string;
+  notification_type?: string;
+  body?: string;
 };
 
 export default function NotificationsScreen() {
@@ -134,6 +137,16 @@ export default function NotificationsScreen() {
         return 'message.fill';
       case 'connection':
         return 'person.fill.checkmark';
+      case 'connection_accepted':
+        return 'checkmark.circle.fill';
+      case 'connection_declined':
+        return 'xmark.circle.fill';
+      case 'phone_request':
+        return 'phone.fill';
+      case 'phone_response':
+        return 'phone.badge.checkmark';
+      case 'missed_call':
+        return 'phone.down.fill';
       case 'system':
         return 'info.circle.fill';
       default:
@@ -149,6 +162,16 @@ export default function NotificationsScreen() {
         return colors.primary;
       case 'connection':
         return colors.success;
+      case 'connection_accepted':
+        return colors.success;
+      case 'connection_declined':
+        return colors.error;
+      case 'phone_request':
+        return colors.primary;
+      case 'phone_response':
+        return colors.success;
+      case 'missed_call':
+        return colors.error;
       case 'system':
         return colors.accent;
       default:
@@ -170,8 +193,22 @@ export default function NotificationsScreen() {
         }
         break;
       case 'connection':
+      case 'connection_accepted':
+      case 'connection_declined':
         if (notification.related_user_id) {
           router.push(`/connected-profile/${notification.related_user_id}`);
+        } else {
+          router.push('/(tabs)/connections');
+        }
+        break;
+      case 'phone_request':
+      case 'phone_response':
+        // Navigate to connections to handle phone requests
+        router.push('/(tabs)/connections');
+        break;
+      case 'missed_call':
+        if (notification.related_user_id) {
+          router.push(`/chat/${notification.related_user_id}`);
         }
         break;
       case 'match':
@@ -224,6 +261,9 @@ export default function NotificationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
+        {/* Phone Number Requests */}
+        <PhoneRequestManager />
+
         {notifications.length > 0 ? (
           notifications.map((notification) => (
             <Pressable
@@ -254,7 +294,7 @@ export default function NotificationsScreen() {
                     {notification.title}
                   </Text>
                   <Text style={styles.notificationDescription}>
-                    {notification.description}
+                    {notification.body || notification.description}
                   </Text>
                   <Text style={styles.notificationTime}>
                     {formatTimestamp(notification.created_at)}

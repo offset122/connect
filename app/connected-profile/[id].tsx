@@ -28,17 +28,24 @@ type User = {
   gender: string;
   county: string;
   city: string;
-  bio?: string;
-  interests?: string[];
   current_profession?: string;
   education_level?: string;
   height_ft?: number;
   height_in?: number;
   avatar?: string;
+  // Updated photo fields
+  full_photo?: string;
+  passport_photo?: string;
   profile_images?: string[];
   is_verified: boolean;
   nationality?: string;
   country_of_residence?: string;
+  // About You fields from registration
+  introduce_yourself?: string;
+  describe_appearance?: string;
+  looking_for_appearance?: string;
+  do_not_contact_me_if?: string;
+  interests?: string[];
 };
 
 type Connection = {
@@ -46,6 +53,18 @@ type Connection = {
   status: string;
   requester_id: string;
   recipient_id: string;
+};
+
+type PhotoRequest = {
+  id: string;
+  requester_id: string;
+  target_user_id: string;
+  request_status: 'pending' | 'approved' | 'declined';
+};
+
+type PhotoRequest = {
+  id: string;
+  request_status: 'pending' | 'approved' | 'declined';
 };
 
 export default function ConnectedProfileScreen() {
@@ -56,6 +75,7 @@ export default function ConnectedProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [reporting, setReporting] = useState(false);
+  const [canViewPhotos, setCanViewPhotos] = useState(false);
 
   useEffect(() => {
     if (typeof id === 'string') {
@@ -78,16 +98,26 @@ export default function ConnectedProfileScreen() {
 
       setCurrentUserId(user.id);
 
-      // Verify connection exists and is accepted
+      // Verify connection exists (accepted or pending where current user is recipient)
       const { data: connectionData, error: connectionError } = await (supabase as any)
         .from('connections')
         .select('*')
         .or(`and(requester_id.eq.${user.id},recipient_id.eq.${userId}),and(requester_id.eq.${userId},recipient_id.eq.${user.id})`)
-        .eq('status', 'accepted')
         .single();
 
       if (connectionError || !connectionData) {
-        Alert.alert('Access Denied', 'You can only view profiles of your connections');
+        Alert.alert('Access Denied', 'Connection not found');
+        router.back();
+        return;
+      }
+
+      // Check if user has permission to view this profile
+      const isAccepted = connectionData.status === 'accepted';
+      const isPendingRecipient = connectionData.status === 'pending' && connectionData.recipient_id === user.id;
+      const isPendingRequester = connectionData.status === 'pending' && connectionData.requester_id === user.id;
+      
+      if (!isAccepted && !isPendingRecipient && !isPendingRequester) {
+        Alert.alert('Access Denied', 'You can only view profiles of your connections or pending requests');
         router.back();
         return;
       }
@@ -104,7 +134,22 @@ export default function ConnectedProfileScreen() {
       if (profileError) throw profileError;
 
       setUser(userData);
-      console.log('Connected user profile loaded:', userData.first_name);
+
+      // Check if current user has approved photo request
+      // Check if there's an approved photo request from current user to this profile owner
+      const { data: photoRequestData } = await (supabase as any)
+        .from('photo_requests')
+        .select('*')
+        .eq('requester_id', user.id)
+        .eq('target_user_id', userId)
+        .eq('request_status', 'approved')
+        .maybeSingle();
+
+      // Can view photos if connection is accepted OR photo request is approved
+      const hasPhotoAccess = isAccepted || !!photoRequestData;
+      setCanViewPhotos(hasPhotoAccess);
+
+      console.log('Connected user profile loaded:', userData.first_name, '| Photo access:', hasPhotoAccess);
     } catch (error) {
       console.error('Error fetching connected user profile:', error);
       Alert.alert('Error', 'Failed to load user profile');
@@ -127,6 +172,47 @@ export default function ConnectedProfileScreen() {
       'Voice calling feature will be available soon! For now, you can send messages to chat.',
       [{ text: 'OK' }]
     );
+  };
+
+  const requestPhotoAccess = async (targetUserId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if there's already a pending request
+      const { data: existingRequest } = await (supabase as any)
+        .from('photo_requests')
+        .select('*')
+        .eq('requester_id', user.id)
+        .eq('target_user_id', targetUserId)
+        .in('request_status', ['pending', 'approved'])
+        .maybeSingle();
+
+      if (existingRequest) {
+        if (existingRequest.request_status === 'approved') {
+          Alert.alert('Access Granted', 'You already have access to view photos!');
+        } else {
+          Alert.alert('Pending', 'You already have a pending request. Please wait for a response.');
+        }
+        return;
+      }
+
+      // Create new photo request
+      const { error } = await (supabase as any)
+        .from('photo_requests')
+        .insert({
+          requester_id: user.id,
+          target_user_id: targetUserId,
+          request_status: 'pending',
+        });
+
+      if (error) throw error;
+
+      Alert.alert('Request Sent', 'Your photo request has been sent. You will be notified when approved.');
+    } catch (error) {
+      console.error('Error requesting photo access:', error);
+      Alert.alert('Error', 'Failed to send photo request');
+    }
   };
 
   const handleReport = async () => {
@@ -193,8 +279,8 @@ export default function ConnectedProfileScreen() {
         return;
       }
 
-      // Check if reports table exists and insert report
-      const { data, error } = await supabase
+      // Insert report
+      const { data, error } = await (supabase as any)
         .from('reports')
         .insert({
           reporter_id: currentUser.id,
@@ -348,30 +434,81 @@ export default function ConnectedProfileScreen() {
           )}
         </View>
 
-        {/* Photo Gallery */}
-        {user.profile_images && user.profile_images.length > 0 && (
+        {/* Photo Gallery - Only show if user has approved photo request */}
+        {canViewPhotos && (user.full_photo || user.passport_photo) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Photos</Text>
-            <View style={styles.photoGrid}>
-              {user.profile_images.map((photo, index) => (
-                <View key={index} style={styles.photoItem}>
-                  <Image source={{ uri: photo }} style={styles.photo} />
+            <View style={styles.photoRow}>
+              {user.full_photo && (
+                <View style={styles.photoItem}>
+                  <Image source={{ uri: user.full_photo }} style={styles.photo} />
+                  <View style={styles.photoBadge}>
+                    <Text style={styles.photoBadgeText}>Full</Text>
+                  </View>
                 </View>
-              ))}
+              )}
+              {user.passport_photo && (
+                <View style={styles.photoItem}>
+                  <Image source={{ uri: user.passport_photo }} style={styles.photo} />
+                  <View style={styles.photoBadge}>
+                    <Text style={styles.photoBadgeText}>Passport</Text>
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}
 
-        {/* Bio */}
-        {user.bio && (
+        {!canViewPhotos && connection?.status === 'accepted' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>About</Text>
-            <Text style={styles.bio}>{user.bio}</Text>
+            <Pressable 
+              style={styles.requestPhotosButton}
+              onPress={() => requestPhotoAccess(user.id)}
+            >
+              <IconSymbol name="photo.stack" size={24} color={colors.card} />
+              <Text style={styles.requestPhotosButtonText}>Request to View Photos</Text>
+            </Pressable>
+            <Text style={styles.requestPhotosHint}>
+              Send a request to see {user.first_name}'s full and passport photos
+            </Text>
+          </View>
+        )}
+
+
+        {/* Introduce Yourself (About You) */}
+        {user.introduce_yourself && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Introduce Yourself</Text>
+            <Text style={styles.bio}>{user.introduce_yourself}</Text>
+          </View>
+        )}
+
+        {/* Appearance Description */}
+        {user.describe_appearance && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Appearance</Text>
+            <Text style={styles.bio}>{user.describe_appearance}</Text>
+          </View>
+        )}
+
+        {/* Looking For */}
+        {user.looking_for_appearance && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Looking For</Text>
+            <Text style={styles.bio}>{user.looking_for_appearance}</Text>
+          </View>
+        )}
+
+        {/* Do Not Contact If */}
+        {user.do_not_contact_me_if && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Do Not Contact If</Text>
+            <Text style={styles.bio}>{user.do_not_contact_me_if}</Text>
           </View>
         )}
 
         {/* Interests */}
-        {user.interests && user.interests.length > 0 && (
+        {user.interests && Array.isArray(user.interests) && user.interests.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Interests</Text>
             <View style={styles.interestsContainer}>
@@ -549,6 +686,45 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 12,
     resizeMode: 'cover',
+  },
+  photoRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  photoBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  photoBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.card,
+  },
+  requestPhotosButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  requestPhotosButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.card,
+  },
+  requestPhotosHint: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
   },
   bio: {
     fontSize: 16,

@@ -1,81 +1,20 @@
-
-import React, { useState, useRef } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Animated } from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import safeBack from '@/utils/safeRouter';
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
-import { LinearGradient } from "expo-linear-gradient";
-
-const { width } = Dimensions.get('window');
-
-interface OnboardingStep {
-  icon: string;
-  title: string;
-  description: string;
-  color: string;
-}
-
-const steps: OnboardingStep[] = [
-  {
-    icon: "person.fill",
-    title: "Create Your Profile",
-    description: "Complete your detailed profile with information about yourself, your preferences, and what you're looking for in a partner.",
-    color: colors.primary,
-  },
-  {
-    icon: "magnifyingglass",
-    title: "Discover Matches",
-    description: "Browse through potential matches based on your preferences. Your profile photo remains private until you both connect.",
-    color: colors.secondary,
-  },
-  {
-    icon: "heart.fill",
-    title: "Connect & Chat",
-    description: "Send connection requests to people you're interested in. Once accepted, you can view each other's photos and start chatting.",
-    color: colors.accent,
-  },
-  {
-    icon: "shield.checkmark.fill",
-    title: "Stay Safe",
-    description: "Report inappropriate behavior, control your online status, and enjoy a respectful dating environment.",
-    color: colors.success,
-  },
-];
 
 export default function HowItWorksScreen() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const [understood, setUnderstood] = useState(false);
 
-  const handleNext = () => {
-    if (currentStep < steps.length - 1) {
-      const nextStep = currentStep + 1;
-      setCurrentStep(nextStep);
-      scrollViewRef.current?.scrollTo({ x: width * nextStep, animated: true });
-    } else {
-      router.push('/terms-and-conditions');
-    }
-  };
-
-  const handleSkip = () => {
+  const handleContinue = () => {
     router.push('/terms-and-conditions');
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
-      const prevStep = currentStep - 1;
-      setCurrentStep(prevStep);
-      scrollViewRef.current?.scrollTo({ x: width * prevStep, animated: true });
-    } else {
-      router.back();
-    }
-  };
-
-  const handleScroll = (event: any) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const step = Math.round(offsetX / width);
-    setCurrentStep(step);
+    safeBack(router);
   };
 
   return (
@@ -87,104 +26,136 @@ export default function HowItWorksScreen() {
             <IconSymbol name="chevron.left" size={24} color={colors.primary} />
           </Pressable>
           <Text style={styles.headerTitle}>How It Works</Text>
-          <Pressable onPress={handleSkip} style={styles.skipButton}>
-            <Text style={styles.skipText}>Skip</Text>
-          </Pressable>
+          <View style={{ width: 40 }} />
         </View>
 
-        {/* Progress Indicators */}
-        <View style={styles.progressContainer}>
-          {steps.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.progressDot,
-                index === currentStep && styles.progressDotActive,
-              ]}
-            />
-          ))}
-        </View>
+        {/* Content */}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <Text style={styles.mainTitle}>Welcome to Hanna's Connect</Text>
+          <Text style={styles.tagline}>For the grown, the intentional, and the private.</Text>
 
-        {/* Content ScrollView */}
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          style={styles.scrollView}
-        >
-          {steps.map((step, index) => (
-            <View key={index} style={styles.stepContainer}>
-              <View style={styles.stepContent}>
-                <View style={[styles.iconContainer, { backgroundColor: step.color + '20' }]}>
-                  <IconSymbol name={step.icon} size={80} color={step.color} />
-                </View>
-                
-                <Text style={styles.stepTitle}>{step.title}</Text>
-                <Text style={styles.stepDescription}>{step.description}</Text>
+          <Text style={styles.paragraph}>
+            Hanna's Connect is a members only private dating platform for adults 25 and above who want to connect quietly and intentionally.
+          </Text>
 
-                {/* Feature List */}
-                {index === 0 && (
-                  <View style={styles.featureList}>
-                    <FeatureItem icon="checkmark.circle.fill" text="Detailed profile questions" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Privacy-first approach" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Optional photo uploads" />
-                  </View>
-                )}
+          <Text style={styles.paragraph}>
+            For just 3,000 KES, you get 180 days of UNLIMITED access to singles across Kenya and the diaspora. The fee is non-refundable and non-transferable.
+          </Text>
 
-                {index === 1 && (
-                  <View style={styles.featureList}>
-                    <FeatureItem icon="checkmark.circle.fill" text="Smart matching algorithm" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Filter by preferences" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Photos hidden until match" />
-                  </View>
-                )}
+          <Text style={styles.paragraph}>
+            There is no public browsing. Only members get to read the profiles of other members. And everyone here is intentionally here.
+          </Text>
 
-                {index === 2 && (
-                  <View style={styles.featureList}>
-                    <FeatureItem icon="checkmark.circle.fill" text="Send connection requests" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Real-time messaging" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Photo reveal on acceptance" />
-                  </View>
-                )}
+          <Text style={styles.paragraph}>
+            We understand something many won't say out loud, most people desire connection, but they want to seek it in private. Because sometimes, all it takes is your picture being seen publicly to become the next topic of discussion at your workplace, by that one colleague who doesn't like you. Or worse, that cousin who'll screenshot and send it to relatives who already dislike your mother. That's where we come in.
+          </Text>
 
-                {index === 3 && (
-                  <View style={styles.featureList}>
-                    <FeatureItem icon="checkmark.circle.fill" text="Report & block users" />
-                    <FeatureItem icon="checkmark.circle.fill" text="Control online status" />
-                    <FeatureItem icon="checkmark.circle.fill" text="24/7 support available" />
-                  </View>
-                )}
-              </View>
+          <Text style={styles.paragraph}>
+            Nobody needs to know you're looking. And if the person you're looking for is also looking, we simply help you two meet. You can find or be found intentionally, without necessarily exposing your whole face for the world to see.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            We provide avatars for each profile. You pick one. That becomes your profile image.
+          </Text>
+
+          <Text style={styles.sectionTitle}>Photo Privacy</Text>
+          <Text style={styles.paragraph}>
+            If you choose to upload real photos, you remain fully in control.
+          </Text>
+          <Text style={styles.paragraph}>
+            Only the people you personally approve can view your photos.
+          </Text>
+          <Text style={styles.paragraph}>
+            No approval, no access.
+          </Text>
+
+          <Text style={styles.sectionTitle}>Free Renewal Guarantee</Text>
+          <Text style={styles.paragraph}>
+            If you do not get five matches within your 180 day membership, we renew you absolutely free.
+          </Text>
+          <Text style={styles.paragraph}>
+            A match means
+          </Text>
+          <Text style={styles.bulletPoint}>• You sent interest and they approved</Text>
+          <Text style={styles.bulletPoint}>• You received interest and you approved.</Text>
+          <Text style={styles.paragraph}>
+            If you do not reach five, your next 180 days are on us.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            After reading a profile, you will know whether this is someone worth engaging with even without a photo.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            If you are interested, you click "I am interested in you." They can accept or decline. If they accept, your inboxes open instantly. If they decline, you receive a respectful email.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            We do not recommend matches. You search manually using detailed filters. And whether someone is in Kenya or abroad, you connect freely in the same app at no extra cost.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            This is not a space for performance. It is for people who want something real.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            Connection does not have to be loud to be meaningful.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            The ones who move quietly are often the ones ready.
+          </Text>
+
+          <Text style={styles.paragraph}>
+            And now, so are you.
+          </Text>
+
+          <Text style={styles.note}>
+            Please note: The 3,000 KES membership fee is non-refundable and non-transferable.
+          </Text>
+
+          <Text style={styles.footerTagline}>Hanna's Connect</Text>
+          <Text style={styles.footerSlogan}>Clarity before chemistry.</Text>
+
+          {/* Checkbox */}
+          <Pressable
+            style={styles.checkboxContainer}
+            onPress={() => setUnderstood(!understood)}
+          >
+            <View style={[styles.checkbox, understood && styles.checkboxChecked]}>
+              {understood && (
+                <IconSymbol name="checkmark" size={16} color={colors.card} />
+              )}
             </View>
-          ))}
+            <Text style={styles.checkboxLabel}>
+              I have read and understand how Hanna's Connect works.
+            </Text>
+          </Pressable>
+
+          <View style={{ height: 40 }} />
         </ScrollView>
 
-        {/* Navigation Buttons */}
+        {/* Continue Button */}
         <View style={styles.buttonContainer}>
           <Pressable
-            style={styles.nextButton}
-            onPress={handleNext}
+            style={[
+              styles.continueButton,
+              !understood && styles.continueButtonDisabled
+            ]}
+            onPress={understood ? handleContinue : undefined}
+            disabled={!understood}
           >
-            <Text style={styles.nextButtonText}>
-              {currentStep === steps.length - 1 ? 'Continue' : 'Next'}
+            <Text style={[
+              styles.continueButtonText,
+              !understood && styles.continueButtonTextDisabled
+            ]}>
+              Continue to Terms
             </Text>
-            <IconSymbol name="arrow.right" size={20} color={colors.card} />
+            <IconSymbol name="arrow.right" size={20} color={understood ? colors.card : colors.textSecondary} />
           </Pressable>
         </View>
       </View>
     </SafeAreaView>
-  );
-}
-
-function FeatureItem({ icon, text }: { icon: string; text: string }) {
-  return (
-    <View style={styles.featureItem}>
-      <IconSymbol name={icon} size={20} color={colors.success} />
-      <Text style={styles.featureText}>{text}</Text>
-    </View>
   );
 }
 
@@ -199,6 +170,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   backButton: {
     width: 40,
@@ -211,88 +185,93 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
-  skipButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  skipText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  progressDot: {
-    width: 40,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
-  },
-  progressDotActive: {
-    backgroundColor: colors.primary,
-    width: 60,
-  },
   scrollView: {
     flex: 1,
   },
-  stepContainer: {
-    width: width,
-    paddingHorizontal: 20,
+  scrollContent: {
+    padding: 20,
   },
-  stepContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconContainer: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 32,
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.12)',
-    elevation: 8,
-  },
-  stepTitle: {
+  mainTitle: {
     fontSize: 28,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 16,
     textAlign: 'center',
+    marginBottom: 8,
   },
-  stepDescription: {
+  tagline: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.primary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  paragraph: {
     fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  featureList: {
-    width: '100%',
-    gap: 16,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 2,
-  },
-  featureText: {
-    fontSize: 15,
     color: colors.text,
-    fontWeight: '500',
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  bulletPoint: {
+    fontSize: 16,
+    color: colors.text,
+    lineHeight: 24,
+    marginLeft: 16,
+    marginBottom: 8,
+  },
+  note: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  footerTagline: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 24,
+  },
+  footerSlogan: {
+    fontSize: 16,
+    color: colors.primary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  // Checkbox styles
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: colors.text,
     flex: 1,
+    lineHeight: 20,
   },
   buttonContainer: {
     padding: 20,
@@ -300,7 +279,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  nextButton: {
+  continueButton: {
     flexDirection: 'row',
     backgroundColor: colors.primary,
     paddingVertical: 16,
@@ -311,9 +290,15 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 12px rgba(63, 81, 181, 0.3)',
     elevation: 4,
   },
-  nextButtonText: {
+  continueButtonDisabled: {
+    backgroundColor: colors.border,
+  },
+  continueButtonText: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.card,
+  },
+  continueButtonTextDisabled: {
+    color: colors.textSecondary,
   },
 });

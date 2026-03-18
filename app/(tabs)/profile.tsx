@@ -1,11 +1,42 @@
-
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, router } from "expo-router";
-import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles } from "@/styles/commonStyles";
-import { supabase } from "@/app/integrations/supabase/client";
+import { IconSymbol } from "../../components/IconSymbol";
+import { colors, commonStyles } from "../../styles/commonStyles";
+import { supabase } from "../integrations/supabase/client";
+import PhotoRequestManager from "../../components/PhotoRequestManager";
+
+// Helper function to get avatar image from assets
+const getAvatarImage = (filename: string | null | undefined) => {
+  if (!filename) {
+    console.log('No filename provided for avatar');
+    return null;
+  }
+
+  console.log('Fetching avatar image for:', filename);
+
+  const avatarMap: { [key: string]: any } = {
+    '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
+    '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
+    '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
+    'androgynous-avatar-non-binary-queer-person.jpg': require('../../assets/androgynous-avatar-non-binary-queer-person.jpg'),
+    'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
+    'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg': require('../../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
+    'av1.jpg': require('../../assets/av1.jpg'),
+    'av2.jpg': require('../../assets/av2.jpg'),
+    'av3.jpg': require('../../assets/av3.jpg'),
+    'av4.jpg': require('../../assets/av4.jpg'),
+    'av5.jpg': require('../../assets/av5.jpg'),
+    'av6.jpg': require('../../assets/av6.jpg'),
+    'men1.jpg': require('../../assets/men1.jpg'),
+    'men2.jpg': require('../../assets/men2.jpg'),
+    'men3.jpg': require('../../assets/men3.jpg'),
+  };
+  const image = avatarMap[filename];
+  console.log('Avatar image found:', !!image);
+  return image || null;
+};
 
 export default function ProfileScreen() {
   const [isOnline, setIsOnline] = useState(true);
@@ -20,30 +51,82 @@ export default function ProfileScreen() {
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
-      
+
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
-      
+
       if (!user) {
         Alert.alert('Error', 'Please log in to view your profile');
         router.replace('/login');
         return;
       }
 
-      // Fetch user profile data
-      const { data: profileData, error: profileError } = await supabase
+      console.log('Fetching profile for auth user:', user.id);
+
+      // Fetch user profile data - only fields from registration
+      // Try both auth_id and id to handle different database configurations
+      let profileData: any = null;
+
+      // First try with auth_id (newer schema)
+      // Query all columns that might exist - Supabase will only return columns that exist
+      const { data: authIdData, error: authIdError } = await supabase
         .from('users')
         .select('*')
-        .eq('id', user.id)
-        .single();
+        .eq('auth_id', user.id)
+        .maybeSingle();
 
-      if (profileError) throw profileError;
+      // Check for query error (not just null data)
+      if (authIdError) {
+        console.error('Error querying by auth_id:', authIdError);
+        // If it's a real database error (not just no rows), we should handle it
+        // but continue to try the fallback method
+      }
 
-      setUserProfile(profileData);
-      setIsOnline((profileData as any)?.online_status || false);
-      
-      console.log('User profile loaded:', profileData);
+      if (authIdData) {
+        profileData = authIdData;
+        console.log('Profile found using auth_id');
+      } else if (!authIdError || authIdError.code === 'PGRST116') {
+        // Only try fallback if first query didn't have a real error, or if it was just "no rows"
+        // Fallback to id (older schema or admin accounts)
+        console.log('No profile found with auth_id, trying with id...');
+        const { data: idData, error: idError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (idError) {
+          console.error('Error querying by id:', idError);
+          throw new Error(`Failed to fetch profile: ${idError.message}`);
+        }
+
+        if (idData) {
+          profileData = idData;
+          console.log('Profile found using id');
+        }
+      }
+
+      if (profileData) {
+        console.log('Profile data fetched:', {
+          id: (profileData as any).id,
+          email: (profileData as any).email,
+          first_name: (profileData as any).first_name,
+          avatar: (profileData as any).avatar,
+          age: (profileData as any).age,
+          gender: (profileData as any).gender,
+          county: (profileData as any).county,
+          country: (profileData as any).country_of_residence,
+          profession: (profileData as any).current_profession,
+        });
+
+        setUserProfile(profileData);
+        setIsOnline((profileData as any)?.online_status || false);
+
+        console.log('User profile loaded with avatar:', (profileData as any).avatar);
+      } else {
+        console.error('No profile data returned');
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
       Alert.alert('Error', 'Failed to load profile data');
@@ -68,7 +151,7 @@ export default function ProfileScreen() {
             try {
               const { error } = await supabase.auth.signOut();
               if (error) throw error;
-              
+
               console.log('User logged out successfully');
               router.replace('/login');
             } catch (error) {
@@ -84,9 +167,13 @@ export default function ProfileScreen() {
   const handleOnlineStatusToggle = async (value: boolean) => {
     try {
       setIsOnline(value);
-      
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || !userProfile) return;
+
+      // Use the correct id field based on what we have in userProfile
+      const updateField = userProfile.auth_id ? 'auth_id' : 'id';
+      const updateValue = userProfile.auth_id ? user.id : userProfile.id;
 
       const { error } = await (supabase as any)
         .from('users')
@@ -94,10 +181,10 @@ export default function ProfileScreen() {
           online_status: value,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', user.id);
+        .eq(updateField, updateValue);
 
       if (error) throw error;
-      
+
       console.log('Online status updated:', value);
     } catch (error) {
       console.error('Error updating online status:', error);
@@ -106,14 +193,37 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleHannaHelp = () => {
+    const phoneNumber = "254723438717"; // Kenyan number format
+
+    // Note: Linking is imported from 'react-native', which is sufficient.
+    const whatsappScheme = `whatsapp://send?phone=${phoneNumber}`;
+    const whatsappWeb = `https://wa.me/${phoneNumber}`;
+
+    Linking.canOpenURL(whatsappScheme)
+      .then((supported) => {
+        if (supported) {
+          // Open WhatsApp app
+          return Linking.openURL(whatsappScheme);
+        } else {
+          // Fallback to WhatsApp Web (browser)
+          return Linking.openURL(whatsappWeb);
+        }
+      })
+      .catch((err) => {
+        console.log("WhatsApp Error:", err);
+        Alert.alert("Error", "Failed to open WhatsApp.");
+      });
+  };
+
   const calculateDaysRemaining = (expiryDate: string | null) => {
     if (!expiryDate) return 'Not set';
-    
+
     const expiry = new Date(expiryDate);
     const now = new Date();
     const diffTime = expiry.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays < 0) return 'Expired';
     if (diffDays === 0) return 'Expires today';
     if (diffDays === 1) return '1 day';
@@ -146,8 +256,8 @@ export default function ProfileScreen() {
   }
 
   const displayName = userProfile.first_name || userProfile.username || 'User';
-  const fullName = userProfile.first_name && userProfile.last_name 
-    ? `${userProfile.first_name} ${userProfile.last_name}` 
+  const fullName = userProfile.first_name && userProfile.last_name
+    ? `${userProfile.first_name} ${userProfile.last_name}`
     : displayName;
 
   return (
@@ -160,7 +270,7 @@ export default function ProfileScreen() {
           }}
         />
       )}
-      <ScrollView 
+      <ScrollView
         style={styles.container}
         contentContainerStyle={[
           styles.contentContainer,
@@ -170,20 +280,35 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarLarge}>
-            <Text style={styles.avatarEmojiLarge}>
-              {userProfile.avatar || (userProfile.gender === 'Male' ? '👨' : '👩')}
-            </Text>
+            {userProfile?.avatar ? (
+              <>
+                {console.log('Rendering avatar image for:', userProfile.avatar)}
+                <Image
+                  source={getAvatarImage(userProfile.avatar)}
+                  style={styles.avatarImage}
+                  resizeMode="cover"
+                  onError={() => console.log('Avatar image failed to load')}
+                  onLoad={() => console.log('Avatar image loaded successfully')}
+                />
+              </>
+            ) : (
+              <>
+                {console.log('No avatar, using emoji:', userProfile?.gender)}
+                <Text style={styles.avatarEmojiLarge}>
+                  {userProfile?.gender === 'Male' ? '👨' : '👩'}
+                </Text>
+              </>
+            )}
           </View>
           <Text style={styles.name}>
             {fullName}{userProfile.age ? `, ${userProfile.age}` : ''}
           </Text>
           {(userProfile.county || userProfile.city) && (
             <View style={styles.locationRow}>
-              <IconSymbol name="location.fill" size={16} color={colors.textSecondary} />
-              <Text style={styles.location}>
+              <Text style={[styles.location, { textAlign: 'center' }]} numberOfLines={2}>
                 {userProfile.county || userProfile.city}
-                {userProfile.country_of_residence && userProfile.country_of_residence !== 'Kenya' 
-                  ? `, ${userProfile.country_of_residence}` 
+                {userProfile.country_of_residence && userProfile.country_of_residence !== 'Kenya'
+                  ? `, ${userProfile.country_of_residence}`
                   : ''}
               </Text>
             </View>
@@ -193,33 +318,127 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* Bio Section */}
-        {userProfile.bio && (
+        {/* Photos Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Photos</Text>
+            <Pressable onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}>
+              <Text style={styles.viewAllText}>View All</Text>
+            </Pressable>
+          </View>
+          {userProfile.profile_images && userProfile.profile_images.length > 0 ? (
+            <View style={styles.photoPreview}>
+              {userProfile.profile_images.slice(0, 3).map((photo: string, index: number) => (
+                <Pressable
+                  key={index}
+                  style={styles.photoThumb}
+                  onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
+                >
+                  <Image source={{ uri: photo }} style={styles.photoThumbImage} />
+                </Pressable>
+              ))}
+              {userProfile.profile_images.length > 3 && (
+                <View style={styles.morePhotosOverlay}>
+                  <Text style={styles.morePhotosText}>+{userProfile.profile_images.length - 3}</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              style={styles.addPhotosButton}
+              onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
+            >
+              <IconSymbol name="photo.badge.plus" size={32} color={colors.primary} />
+              <Text style={styles.addPhotosText}>Add Photos</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {/* About Me Section */}
+        {userProfile.introduce_yourself && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About Me</Text>
-            <Text style={styles.bioText}>{userProfile.bio}</Text>
+            <Text style={styles.bioText}>{userProfile.introduce_yourself}</Text>
           </View>
         )}
 
-        {/* Relationship Info */}
-        {(userProfile.relationship_goal || userProfile.sexual_orientation) && (
+
+        {/* More About Me */}
+        {(userProfile.describe_appearance || userProfile.looking_for_appearance || userProfile.do_not_contact_me_if || userProfile.want_kids || userProfile.believe_in_marriage) && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Relationship Preferences</Text>
-            {userProfile.relationship_goal && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Looking for</Text>
-                <Text style={styles.detailValue}>{userProfile.relationship_goal}</Text>
+            <Text style={styles.sectionTitle}>More About Me</Text>
+            {userProfile.describe_appearance && (
+              <View style={styles.aboutBlock}>
+                <Text style={styles.aboutLabel}>My Appearance</Text>
+                <Text style={styles.aboutText}>{userProfile.describe_appearance}</Text>
               </View>
             )}
-            {userProfile.sexual_orientation && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Orientation</Text>
-                <Text style={styles.detailValue}>{userProfile.sexual_orientation}</Text>
+            {userProfile.looking_for_appearance && (
+              <View style={styles.aboutBlock}>
+                <Text style={styles.aboutLabel}>What I'm Looking For</Text>
+                <Text style={styles.aboutText}>{userProfile.looking_for_appearance}</Text>
+              </View>
+            )}
+            {userProfile.do_not_contact_me_if && (
+              <View style={styles.aboutBlock}>
+                <Text style={styles.aboutLabel}>Do Not Contact Me If</Text>
+                <Text style={styles.aboutText}>{userProfile.do_not_contact_me_if}</Text>
+              </View>
+            )}
+            {userProfile.want_kids && (
+              <View style={styles.aboutBlock}>
+                <Text style={styles.aboutLabel}>Want Kids in Future</Text>
+                <Text style={styles.aboutText}>{userProfile.want_kids}</Text>
+              </View>
+            )}
+            {userProfile.believe_in_marriage && (
+              <View style={styles.aboutBlock}>
+                <Text style={styles.aboutLabel}>Believe in Marriage</Text>
+                <Text style={styles.aboutText}>{userProfile.believe_in_marriage}</Text>
               </View>
             )}
           </View>
         )}
 
+        {/* Basic Information */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Basic Information</Text>
+          {userProfile.current_profession && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Profession</Text>
+              <Text style={styles.detailValue}>{userProfile.current_profession}</Text>
+            </View>
+          )}
+          {userProfile.nationality && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Nationality</Text>
+              <Text style={styles.detailValue}>{userProfile.nationality}</Text>
+            </View>
+          )}
+          {userProfile.marital_status && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Marital Status</Text>
+              <Text style={styles.detailValue}>{userProfile.marital_status}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Health & Faith */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Health & Faith</Text>
+          {userProfile.hiv_status && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>HIV Status</Text>
+              <Text style={styles.detailValue}>{userProfile.hiv_status}</Text>
+            </View>
+          )}
+          {userProfile.religion && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Religion & Faith Level</Text>
+              <Text style={styles.detailValue}>{userProfile.religion}</Text>
+            </View>
+          )}
+        </View>
         {/* Privacy Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy</Text>
@@ -262,24 +481,11 @@ export default function ProfileScreen() {
               <Text style={styles.detailValue}>{userProfile.gender}</Text>
             </View>
           )}
-          {userProfile.complexion && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Complexion</Text>
-              <Text style={styles.detailValue}>{userProfile.complexion}</Text>
-            </View>
-          )}
-          {userProfile.number_of_children !== null && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Children</Text>
-              <Text style={styles.detailValue}>
-                {userProfile.number_of_children === 0 ? 'No' : userProfile.number_of_children}
-              </Text>
-            </View>
-          )}
+
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Payment Status</Text>
             <Text style={[
-              styles.detailValue, 
+              styles.detailValue,
               userProfile.has_paid ? styles.paidText : styles.unpaidText
             ]}>
               {userProfile.has_paid ? 'Paid' : 'Pending'}
@@ -298,7 +504,7 @@ export default function ProfileScreen() {
         {userProfile.is_admin && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Administration</Text>
-            <Pressable 
+            <Pressable
               style={styles.adminButton}
               onPress={() => router.push('/admin/dashboard')}
             >
@@ -309,12 +515,12 @@ export default function ProfileScreen() {
           </View>
         )}
 
-
-        {/* Support */}
+        {/* Support Section (Fixed Location) */}
         <View style={styles.section}>
-          <Pressable 
+          <Text style={styles.sectionTitle}>Help & Support</Text>
+          <Pressable
             style={styles.supportButton}
-            onPress={() => Alert.alert('Support', 'WhatsApp support will open here')}
+            onPress={() => router.push('/support')}
           >
             <IconSymbol name="questionmark.circle.fill" size={24} color={colors.primary} />
             <Text style={styles.supportButtonText}>Hanna&apos;s Help (WhatsApp)</Text>
@@ -351,6 +557,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     marginBottom: 16,
+    // @ts-ignore for web support (if used)
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 3,
   },
@@ -362,6 +569,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarEmojiLarge: {
     fontSize: 56,
@@ -375,12 +587,16 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
     marginBottom: 16,
+    width: '100%',
   },
   location: {
     fontSize: 16,
     color: colors.textSecondary,
+    flex: 5,
+    textAlign: 'center',
   },
   editButton: {
     backgroundColor: colors.primary,
@@ -398,6 +614,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    // @ts-ignore for web support (if used)
     boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
     elevation: 3,
   },
@@ -499,5 +716,82 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.error,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  photoPreview: {
+    flexDirection: 'row',
+    gap: 8,
+    position: 'relative',
+  },
+  photoThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.background,
+  },
+  photoThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  morePhotosOverlay: {
+    position: 'absolute',
+    right: 8,
+    top: 0,
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  morePhotosText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.card,
+  },
+  addPhotosButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 20,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.primary + '30',
+    borderStyle: 'dashed',
+  },
+  addPhotosText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  aboutBlock: {
+    marginBottom: 16,
+  },
+  aboutLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  aboutText: {
+    fontSize: 15,
+    color: colors.text,
+    lineHeight: 24,
+    fontWeight: '400',
   },
 });

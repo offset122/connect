@@ -724,7 +724,7 @@ const editAccount = async (userId: string, userEmail: string) => {
   const editFirstName = async () => {
     return new Promise<string>((resolve) => {
       Alert.prompt(
-        'Edit First Name',
+        'Edit Full Name',
         'Enter new first name (leave empty to keep current):',
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },

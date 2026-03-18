@@ -1,229 +1,350 @@
- 
 import React from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Dimensions,
+  ScrollView,
+  useWindowDimensions,
+  Image,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 
+const featureImages = [
+  require("../assets/childless.jpg"),
+  require("../assets/single moms.jpg"),
+  require("../assets/deserving50+.jpg"),
+  require("../assets/single dads.jpg"),
+];
+
+const featureNames = [
+  "Child-less singles",
+  "Single moms",
+  "Our Deserving 50+",
+  "Single dads",
+];
+
 export default function WelcomeScreen() {
+  const { width } = useWindowDimensions();
+
+  const isSmallScreen = width < 375;
+  const isMediumScreen = width >= 375 && width < 768;
+  const isLargeScreen = width >= 768;
+
+  const logoSize = isSmallScreen ? 100 : isMediumScreen ? 120 : 140;
+  const iconSize = isSmallScreen ? 70 : isMediumScreen ? 80 : 90;
+  const titleFontSize = isSmallScreen ? 28 : isMediumScreen ? 34 : 40;
+  const descriptionFontSize = isSmallScreen ? 14 : 16;
+  const featureIconContainerSize = isSmallScreen ? 48 : 56;
+
+  const getFeatureCardWidth = () => {
+    if (isLargeScreen) return "23%";
+    if (width > 500) return "31%";
+    return "47%";
+  };
+
+  const contentPadding = isSmallScreen ? 16 : 20;
+  const verticalSpacing = isSmallScreen ? 20 : isMediumScreen ? 28 : 32;
+
   return (
     <SafeAreaView style={commonStyles.safeArea}>
-      <View style={styles.container}>
-        {/* Content */}
-        <View style={styles.content}>
-          {/* Logo Container with Gradient */}
-          <View style={styles.logoContainer}>
-            <View style={styles.logoCircle}>
-              <IconSymbol name="heart.fill" size={90} color={colors.secondary} />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.container}>
+          <View style={[styles.content, { padding: contentPadding }]}>
+
+            {/* Logo */}
+            <View style={[styles.logoContainer, { marginBottom: verticalSpacing }]}>
+              <View
+                style={[
+                  styles.logoCircle,
+                  {
+                    width: logoSize,
+                    height: logoSize,
+                    borderRadius: logoSize / 2,
+                  },
+                ]}
+              >
+                <Image
+                  source={require("../assets/images/logoh.jpg")}
+                  style={{
+                    width: logoSize,
+                    height: logoSize,
+                    borderRadius: logoSize / 2,
+                  }}
+                  resizeMode="cover"
+                />
+              </View>
+              <View
+                style={[
+                  styles.logoGlow,
+                  {
+                    width: logoSize + 20,
+                    height: logoSize + 20,
+                    borderRadius: (logoSize + 20) / 2,
+                  },
+                ]}
+              />
             </View>
-            <View style={styles.logoGlow} />
+
+            <Text style={[styles.title, { fontSize: titleFontSize }]}>
+              Welcome To Hanna&apos;s Connect
+            </Text>
+
+            {/* FIXED DESCRIPTION BLOCK */}
+            <View
+              style={{
+                alignItems: "center",
+                paddingHorizontal: isSmallScreen ? 16 : 30,
+                marginBottom: verticalSpacing,
+                width: "100%",
+              }}
+            >
+              <View style={{ width: "100%" }}>
+                <Text
+                  style={[
+                    styles.description,
+                    {
+                      fontSize: descriptionFontSize,
+                      marginBottom: 6,
+                    },
+                  ]}
+                >
+                  Connect with like minded individuals.
+                </Text>
+
+                <Text
+                  style={[
+                    styles.description,
+                    {
+                      fontSize: descriptionFontSize,
+                      marginBottom: verticalSpacing / 7,
+                    },
+                  ]}
+                >
+                  Clarity before chemistry.
+                </Text>
+
+                <Pressable
+                  onPress={() => router.push("/how-it-works")}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.howItWorksLink}>How it works</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Features */}
+            <View style={[styles.featuresGrid, { paddingHorizontal: isSmallScreen ? 0 : 10 }]}>
+              {featureImages.map((image, index) => (
+                <View key={index} style={[styles.featureCard, { width: getFeatureCardWidth() }]}>
+                  <Image
+                    source={image}
+                    style={[
+                      styles.featureImage,
+                      {
+                        width: featureIconContainerSize * 2.5,
+                        height: featureIconContainerSize * 2.5,
+                        borderRadius: 20,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.featureTitle,
+                      { fontSize: isSmallScreen ? 14 : 16, marginTop: 12 },
+                    ]}
+                  >
+                    {featureNames[index]}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
-          
-          <Text style={styles.title}>Hanna&apos;s Connect</Text>
-          <Text style={styles.tagline}>Find Genuine Connections</Text>
-          
-          <Text style={styles.description}>
-            A modern dating app that helps you find meaningful relationships in a private, 
-            respectful, and well-designed environment.
-          </Text>
 
-          {/* Features Grid */}
-          <View style={styles.featuresGrid}>
-            <View style={styles.featureCard}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.primary + '20' }]}>
-                <IconSymbol name="lock.fill" size={28} color={colors.primary} />
-              </View>
-              <Text style={styles.featureTitle}>Private</Text>
-              <Text style={styles.featureDescription}>Your photos stay hidden until you match</Text>
-            </View>
+          {/* Buttons */}
+          <View style={[styles.buttonContainer, { padding: contentPadding }]}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => router.push("/terms-and-conditions")}
+            >
+              <Text style={[styles.primaryButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                Get Started
+              </Text>
+              <Text style={[styles.primaryButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                →
+              </Text>
+            </Pressable>
 
-            <View style={styles.featureCard}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.secondary + '20' }]}>
-                <IconSymbol name="checkmark.seal.fill" size={28} color={colors.secondary} />
-              </View>
-              <Text style={styles.featureTitle}>Verified</Text>
-              <Text style={styles.featureDescription}>All profiles are carefully reviewed</Text>
-            </View>
+            <Pressable style={styles.secondaryButton} onPress={() => router.push("/login")}>
+              <Text style={[styles.secondaryButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                I Already Have an Account
+              </Text>
+            </Pressable>
 
-            <View style={styles.featureCard}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.accent + '20' }]}>
-                <IconSymbol name="heart.fill" size={28} color={colors.accent} />
-              </View>
-              <Text style={styles.featureTitle}>Genuine</Text>
-              <Text style={styles.featureDescription}>Real people seeking real connections</Text>
-            </View>
-
-            <View style={styles.featureCard}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.success + '20' }]}>
-                <IconSymbol name="checkmark.shield.fill" size={28} color={colors.success} />
-              </View>
-              <Text style={styles.featureTitle}>Safe</Text>
-              <Text style={styles.featureDescription}>Report & block features for your safety</Text>
-            </View>
+            <Text style={styles.termsText}>
+              By continuing, you agree to our{" "}
+              <Text
+                style={{ color: colors.primary, textDecorationLine: "underline" }}
+                onPress={() => router.push("/terms-and-conditions")}
+              >
+                Terms & Conditions
+              </Text>{" "}
+              and{" "}
+              <Text
+                style={{ color: colors.primary, textDecorationLine: "underline" }}
+                onPress={() => router.push("/privacy-policy")}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
           </View>
         </View>
-
-        {/* Buttons */}
-        <View style={styles.buttonContainer}>
-          <Pressable 
-            style={styles.primaryButton}
-            onPress={() => router.push('/how-it-works')}
-          >
-            <Text style={styles.primaryButtonText}>Get Started</Text>
-            <IconSymbol name="arrow.right" size={20} color={colors.card} />
-          </Pressable>
-          
-          <Pressable 
-            style={styles.secondaryButton}
-            onPress={() => router.push('/login')}
-          >
-            <Text style={styles.secondaryButtonText}>I Already Have an Account</Text>
-          </Pressable>
-
-          <Text style={styles.termsText}>
-            By continuing, you agree to our Terms & Privacy Policy
-          </Text>
-        </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollView: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
+    minHeight: Dimensions.get("window").height - 100,
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
   logoContainer: {
-    position: 'relative',
-    marginBottom: 32,
+    position: "relative",
   },
   logoCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
     backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.15)',
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     elevation: 8,
     zIndex: 2,
+    overflow: "hidden",
   },
   logoGlow: {
-    position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: colors.secondary + '30',
+    position: "absolute",
+    backgroundColor: colors.secondary + "30",
     top: -10,
     left: -10,
     zIndex: 1,
   },
   title: {
-    fontSize: 40,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.text,
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
-  tagline: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
+
+  /* PERFECT TEXT WRAPPING — NO CUT-OFF */
   description: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    color: "#000",
+    textAlign: "center",
     lineHeight: 24,
-    marginBottom: 40,
-    paddingHorizontal: 20,
+    flexShrink: 0,
+    flexWrap: "wrap",
+    width: "100%",
   },
+
+  howItWorksLink: {
+    color: "#1E88E5",
+    textDecorationLine: "underline",
+    textAlign: "center",
+    fontSize: 16,
+    marginBottom: 5,
+    flexShrink: 0,
+    width: "100%",
+  },
+
   featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: 12,
-    width: '100%',
-    paddingHorizontal: 10,
+    width: "100%",
+    maxWidth: 1200,
   },
   featureCard: {
-    width: '47%',
     backgroundColor: colors.card,
     borderRadius: 16,
     padding: 16,
-    alignItems: 'center',
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 2,
+    minWidth: 140,
   },
-  featureIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+  featureImage: {
+    resizeMode: "cover",
   },
   featureTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: 4,
-    textAlign: 'center',
-  },
-  featureDescription: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
+    textAlign: "center",
   },
   buttonContainer: {
-    padding: 20,
     gap: 12,
+    paddingBottom: 8,
   },
   primaryButton: {
-    flexDirection: 'row',
+    flexDirection: "row",
     backgroundColor: colors.primary,
     paddingVertical: 18,
     borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    boxShadow: '0px 4px 16px rgba(63, 81, 181, 0.3)',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 6,
   },
   primaryButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.card,
   },
   secondaryButton: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     paddingVertical: 18,
     borderRadius: 14,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 2,
     borderColor: colors.primary,
   },
   secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.primary,
   },
   termsText: {
     fontSize: 12,
     color: colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 8,
     lineHeight: 18,
   },

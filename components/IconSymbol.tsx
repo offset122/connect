@@ -17,7 +17,6 @@ const MAPPING = {
 
   // Navigation & Home
   "house.fill": "home",
-  "house": "home-outlined",
   "arrow.left": "arrow-back",
   "arrow.right": "arrow-forward",
   "arrow.up": "arrow-upward",
@@ -27,21 +26,14 @@ const MAPPING = {
   "chevron.up": "keyboard-arrow-up",
   "chevron.down": "keyboard-arrow-down",
   "arrow.clockwise": "refresh",
-  "arrow.counterclockwise": "refresh",
 
   // Communication & Social
   "paperplane.fill": "send",
-  "paperplane": "send-outlined",
   "envelope.fill": "mail",
-  "envelope": "mail-outline",
   "phone.fill": "phone",
-  "phone": "phone-outlined",
   "message.fill": "chat",
-  "message": "chat-bubble-outline",
   "bell.fill": "notifications",
-  "bell": "notifications-none",
   "heart.fill": "favorite",
-  "heart": "favorite-border",
 
   // Actions & Controls
   "plus": "add",
@@ -63,30 +55,37 @@ const MAPPING = {
   "doc.text.fill": "description",
   "doc.text": "description",
   "folder.fill": "folder",
-  "folder": "folder-open",
   "doc.fill": "insert-drive-file",
-  "doc": "insert-drive-file",
 
   // Media & Content
   "photo.fill": "image",
-  "photo": "image-outlined",
   "camera.fill": "camera-alt",
-  "camera": "camera-alt",
   "video.fill": "videocam",
-  "video": "videocam-off",
+  "video.slash.fill": "videocam-off",
+  "phone.arrow.up.right.fill": "call-made",
+  "person.fill.viewfinder": "person",
+  "plus.magnifyingglass": "add",
+  "plus.circle.fill": "add-circle",
+  "xmark.circle.fill": "cancel",
+  "phone.down.fill": "call-end",
+  "mic.slash.fill": "mic-off",
+  "mic.fill": "mic",
+  "speaker.wave.3.fill": "volume-up",
+  "speaker.fill": "volume-up",
+  "pause.circle.fill": "pause-circle",
+  "pause.circle": "pause-circle-outline",
+  "camera.rotate.fill": "switch-camera",
   "music.note": "music-note",
   "speaker.wave.2.fill": "volume-up",
   "speaker.slash.fill": "volume-off",
   "play.fill": "play-arrow",
   "pause.fill": "pause",
-  "stop.fill": "stop",
 
   // System & Settings
   "gear": "settings",
   "gearshape.fill": "settings",
   "slider.horizontal.3": "tune",
   "info.circle.fill": "info",
-  "info.circle": "info-outlined",
   "exclamationmark.triangle.fill": "warning",
   "exclamationmark.triangle": "warning-amber",
   "questionmark.circle.fill": "help",
@@ -98,9 +97,7 @@ const MAPPING = {
   "circle": "circle",
   "triangle.fill": "change-history",
   "star.fill": "star",
-  "star": "star-border",
   "bookmark.fill": "bookmark",
-  "bookmark": "bookmark-border",
 
   // Technology & Code
   "chevron.left.forwardslash.chevron.right": "code",
@@ -108,29 +105,21 @@ const MAPPING = {
   "wifi": "wifi",
   "antenna.radiowaves.left.and.right": "signal-cellular-alt",
   "battery.100": "battery-full",
-  "battery.25": "battery-2-bar",
   "lock.fill": "lock",
-  "lock.open.fill": "lock-open",
 
   // Shopping & Commerce
   "cart.fill": "shopping-cart",
-  "cart": "shopping-cart-outlined",
   "creditcard.fill": "credit-card",
-  "creditcard": "credit-card",
   "dollarsign.circle.fill": "monetization-on",
   "bag.fill": "shopping-bag",
-  "bag": "shopping-bag",
 
   // Location & Maps
   "location.fill": "location-on",
-  "location": "location-on",
   "map.fill": "map",
-  "map": "map",
   "compass.drawing": "explore",
 
   // Time & Calendar
   "clock.fill": "access-time",
-  "clock": "access-time",
   "calendar": "event",
   "timer": "timer",
 
@@ -138,16 +127,20 @@ const MAPPING = {
   "person": "person",
   "person.fill": "person",
   "person.2.fill": "group",
-  "person.2": "group",
   "person.circle.fill": "account-circle",
-  "person.circle": "account-circle",
   "person.crop.circle.fill": "account-circle",
-  "person.crop.circle": "account-circle",
+  "person.fill.checkmark": "verified-user",
+
+  // Work & Globe
+  "briefcase.fill": "work",
+  "globe": "public",
+
+  // Security
+  "shield.fill": "security",
 
   // Sharing & Export
   "square.and.arrow.up": "share",
-  "square.and.arrow.down": "download",
-  "arrow.up.doc.fill": "upload-file",
+  "arrow.up.doc.fill": "file-upload",
   "link": "link",
 
   // Search & Discovery
@@ -157,7 +150,6 @@ const MAPPING = {
 
   // Visibility & Display
   "eye.fill": "visibility",
-  "eye.slash.fill": "visibility-off",
   "lightbulb.fill": "lightbulb",
   "moon.fill": "dark-mode",
   "sun.max.fill": "light-mode",
