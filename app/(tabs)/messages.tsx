@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, Modal, RefreshControl, Image, TextInput, Linking } from "react-native";
+import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, Modal, RefreshControl, Image, TextInput, Linking, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, router } from "expo-router";
 import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles, spacing, borderRadius, shadows } from "@/styles/commonStyles";
+import { colors, commonStyles, spacing, borderRadius, shadows, responsiveStyles, BREAKPOINTS } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 

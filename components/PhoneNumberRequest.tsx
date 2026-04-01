@@ -14,6 +14,28 @@ import { supabase } from '../app/integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
+// Cross-platform alert helper - works on both native and web
+const showAlert = (title: string, message?: string) => {
+  if (typeof window !== 'undefined') {
+    window.alert(`${title}${message ? '\n\n' + message : ''}`);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
+// Cross-platform confirm helper
+const showConfirm = (message: string): Promise<boolean> => {
+  if (typeof window !== 'undefined') {
+    return Promise.resolve(window.confirm(message));
+  }
+  return new Promise((resolve) => {
+    Alert.alert('Confirm', message, [
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'OK', onPress: () => resolve(true) },
+    ]);
+  });
+};
+
 interface PhoneNumberRequestProps {
   targetUserName: string;
   targetUserId: string;
@@ -34,23 +56,18 @@ export default function PhoneNumberRequest({
   const { user } = useAuth();
   const navigation = useNavigation();
 
-  // Determine role and load status
   useEffect(() => {
     if (!user) return;
-
-    const isRequester = user.id === targetUserId ? false : true; // Wait—this is wrong!
-    // CORRECT LOGIC:
-    const isCurrentUserTarget = user.id === targetUserId;
-    setUserRole(isCurrentUserTarget ? 'target' : 'requester');
-
-    checkRequestStatus();
+    const role = user.id === targetUserId ? 'target' : 'requester';
+    setUserRole(role);
+    checkRequestStatus(role);
   }, [user?.id, targetUserId]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (requestStatus === 'pending' && userRole === 'requester') {
       interval = setInterval(() => {
-        checkRequestStatus();
+        checkRequestStatus(userRole);
       }, 30000);
     }
     return () => {
@@ -58,156 +75,171 @@ export default function PhoneNumberRequest({
     };
   }, [requestStatus, userRole, user?.id, targetUserId]);
 
-  const checkRequestStatus = async () => {
+  const checkRequestStatus = async (role?: 'requester' | 'target') => {
     if (!user) return;
+    const effectiveRole = role ?? userRole;
+    if (!effectiveRole) return;
 
     try {
-      let query;
-      if (userRole === 'requester') {
-        query = supabase
-          .from('phone_number_requests')
-          .select('request_status')
-          .eq('requester_id', user.id)
-          .eq('target_user_id', targetUserId);
-      } else {
-        query = supabase
-          .from('phone_number_requests')
-          .select('request_status')
-          .eq('requester_id', targetUserId) // requester is the other user
-          .eq('target_user_id', user.id);
+      const { data, error } = await (supabase as any)
+        .from('phone_number_requests')
+        .select('request_status')
+        .eq('requester_id', effectiveRole === 'requester' ? user.id : targetUserId)
+        .eq('target_user_id', effectiveRole === 'requester' ? targetUserId : user.id)
+        .limit(1);
+
+      if (error) {
+        // Table might not exist - treat as no requests
+        console.log('checkRequestStatus: Table may not exist or no access:', error.message);
+        setRequestStatus('none');
+        return;
       }
 
-      const { data: existingRequest } = await query.maybeSingle();
-      const status = existingRequest?.request_status || 'none';
+      const status = data?.[0]?.request_status ?? 'none';
+      console.log('checkRequestStatus result:', status, 'role:', effectiveRole);
       setRequestStatus(status as any);
-      
-      // If status is approved and user is target, set hasApproved to true
-      if (status === 'approved' && userRole === 'target') {
+
+      if (status === 'approved' && effectiveRole === 'target') {
         setHasApproved(true);
       }
-    } catch (error) {
-      console.error('Error checking request status:', error);
+    } catch (err) {
+      console.error('checkRequestStatus exception:', err);
+      setRequestStatus('none');
     }
   };
 
-  // Handle sending a request (as requester)
   const handlePhoneNumberRequest = async () => {
-    if (!user || userRole !== 'requester') return;
+    console.log('handlePhoneNumberRequest called', { user: !!user, userRole, requestStatus });
 
-    if (requestStatus === 'pending') {
-      Alert.alert('Request Pending', `You already have a pending request to ${targetUserName}.`);
+    if (!user) {
+      showAlert('Error', 'You must be logged in to make a request.');
       return;
     }
 
-    setRequestStatus('pending');
+    if (!userRole) {
+      showAlert('Error', 'Loading... Please wait a moment and try again.');
+      return;
+    }
+
+    if (userRole !== 'requester') {
+      showAlert('Error', 'You cannot make a phone number request from this account.');
+      return;
+    }
+
+    if (requestStatus === 'pending') {
+      showAlert('Request Pending', `You already have a pending request to ${targetUserName}.`);
+      return;
+    }
+
+    if (requestStatus === 'approved') {
+      showAlert('Request Approved', `${targetUserName} has already shared their phone number in your private chat.`);
+      return;
+    }
+
+    if (requestStatus === 'declined') {
+      showAlert(
+        'Request Previously Declined',
+        `${targetUserName} previously declined your request. You can try again if they'd like to reconsider.`,
+      );
+      return;
+    }
+
     setSending(true);
     setLoading(true);
 
     try {
-      const { data: existingRequest } = await (supabase as any)
+      // Check for existing request
+      const { data: rows, error: fetchError } = await (supabase as any)
         .from('phone_number_requests')
-        .select('*')
+        .select('request_status')
         .eq('requester_id', user.id)
         .eq('target_user_id', targetUserId)
-        .maybeSingle();
+        .limit(1);
+
+      if (fetchError) {
+        console.error('Fetch error:', fetchError);
+        throw fetchError;
+      }
+
+      const existingRequest = rows?.[0] ?? null;
 
       if (existingRequest) {
         const status = existingRequest.request_status;
         if (status === 'approved') {
           setRequestStatus('approved');
-          Alert.alert(
-            '📞 Contact Shared!',
-            `${targetUserName} has sent their phone number in your private chat.`,
-            [
-              { text: 'Open Chat', onPress: () => (navigation as any).navigate('chat', { id: targetUserId }) },
-              { text: 'OK' },
-            ]
-          );
+          showAlert('📞 Contact Shared!', `${targetUserName} has sent their phone number in your private chat.`);
+          setSending(false);
+          setLoading(false);
           return;
         } else if (status === 'pending') {
-          Alert.alert('Request Pending', `You already have a pending request to ${targetUserName}.`);
+          showAlert('Request Pending', `You already have a pending request to ${targetUserName}.`);
+          setSending(false);
+          setLoading(false);
           return;
         } else if (status === 'declined') {
           setRequestStatus('declined');
-          Alert.alert('Request Declined', `${targetUserName} has declined your request.`);
+          showAlert('Request Declined', `${targetUserName} has declined your request.`);
+          setSending(false);
+          setLoading(false);
           return;
         }
       }
 
-      Alert.alert(
-        'Request Phone Number',
-        `Send a request to ${targetUserName} for their phone number? They’ll be notified and can share it securely via message.`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              setRequestStatus('none');
-              setSending(false);
-              setLoading(false);
-            },
-          },
-          {
-            text: 'Send Request',
-            onPress: async () => {
-              try {
-                const { error: requestError } = await (supabase as any)
-                  .from('phone_number_requests')
-                  .insert({
-                    requester_id: user.id,
-                    target_user_id: targetUserId,
-                    request_status: 'pending',
-                  });
-
-                if (requestError) throw requestError;
-
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('first_name, username')
-                  .eq('id', user.id)
-                  .single();
-
-                const displayName = (userData?.first_name || userData?.username) || 'Someone';
-
-                await (supabase as any).from('notifications').insert({
-                  user_id: targetUserId,
-                  type: 'phone_request',
-                  title: 'Phone Number Request 📱',
-                  body: `${displayName} has requested your phone number.`,
-                  description: `${displayName} would like to exchange contact info. You can respond in Connections.`,
-                  related_user_id: user.id,
-                  read: false,
-                  notification_type: 'phone_request',
-                });
-
-                Alert.alert(
-                  'Request Sent! 📱',
-                  `Your request was sent to ${targetUserName}. You’ll get a message if they share their number.`,
-                  [{ text: 'OK' }]
-                );
-              } catch (error: any) {
-                console.error('Error sending request:', error);
-                Alert.alert('Error', error.message || 'Failed to send request.');
-                setRequestStatus('none');
-              } finally {
-                setSending(false);
-                setLoading(false);
-              }
-            },
-          },
-        ]
+      // Confirm before sending
+      const confirmed = await showConfirm(
+        `Send a request to ${targetUserName} for their phone number? They'll be notified and can share it securely via message.`
       );
-    } catch (error) {
-      console.error('Unexpected error:', error);
-      Alert.alert('Error', 'An unexpected error occurred.');
+
+      if (!confirmed) {
+        setSending(false);
+        setLoading(false);
+        return;
+      }
+
+      // Insert request
+      const { error: requestError } = await (supabase as any)
+        .from('phone_number_requests')
+        .insert({
+          requester_id: user.id,
+          target_user_id: targetUserId,
+          request_status: 'pending',
+        });
+
+      if (requestError) throw requestError;
+
+      // Get current user display name
+      const { data: userData } = await supabase
+        .from('users')
+        .select('first_name, username')
+        .eq('id', user.id)
+        .limit(1);
+
+      const displayName = userData?.[0]?.first_name || userData?.[0]?.username || 'Someone';
+
+      // Send notification
+      await (supabase as any).from('notifications').insert({
+        user_id: targetUserId,
+        type: 'phone_request',
+        title: 'Phone Number Request 📱',
+        body: `${displayName} has requested your phone number.`,
+        description: `${displayName} would like to exchange contact info. You can respond in Connections.`,
+        related_user_id: user.id,
+        read: false,
+        notification_type: 'phone_request',
+      });
+
+      setRequestStatus('pending');
+      showAlert('Request Sent! 📱', `Your request was sent to ${targetUserName}. You'll get a message if they share their number.`);
+    } catch (error: any) {
+      console.error('Error sending request:', error);
+      showAlert('Error', error.message || 'Failed to send request.');
       setRequestStatus('none');
+    } finally {
       setSending(false);
       setLoading(false);
     }
   };
 
-
-  // Handle approving the request (as target)
   const handleApproveRequest = async () => {
     if (!user || userRole !== 'target') return;
 
@@ -223,19 +255,15 @@ export default function PhoneNumberRequest({
 
       setRequestStatus('approved');
       setHasApproved(true);
-      Alert.alert(
-        'Request Approved',
-        'Now you can enter your phone number to share with ' + targetUserName
-      );
+      showAlert('Request Approved', 'Now you can enter your phone number to share with ' + targetUserName);
     } catch (error: any) {
       console.error('Error approving request:', error);
-      Alert.alert('Error', 'Failed to approve request.');
+      showAlert('Error', 'Failed to approve request.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle declining the request
   const handleDeclineRequest = async () => {
     if (!user || userRole !== 'target') return;
 
@@ -250,67 +278,55 @@ export default function PhoneNumberRequest({
       if (error) throw error;
 
       setRequestStatus('declined');
-      Alert.alert('Request Declined', `You have declined ${targetUserName}'s request.`);
+      showAlert('Request Declined', `You have declined ${targetUserName}'s request.`);
     } catch (error: any) {
       console.error('Error declining request:', error);
-      Alert.alert('Error', 'Failed to decline request.');
+      showAlert('Error', 'Failed to decline request.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle blocking the user
   const handleBlockUser = async () => {
     if (!user) return;
 
-    Alert.alert(
-      'Block User',
-      `Are you sure you want to block ${targetUserName}? This will prevent them from contacting you.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await (supabase as any)
-                .from('blocked_users')
-                .insert({
-                  blocker_id: user.id,
-                  blocked_id: targetUserId,
-                });
-
-              if (error) throw error;
-
-              Alert.alert('User Blocked', `${targetUserName} has been blocked.`);
-            } catch (error: any) {
-              console.error('Error blocking user:', error);
-              Alert.alert('Error', 'Failed to block user. Please try again.');
-            }
-          },
-        },
-      ]
+    const confirmed = await showConfirm(
+      `Are you sure you want to block ${targetUserName}? This will prevent them from contacting you.`
     );
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await (supabase as any)
+        .from('blocked_users')
+        .insert({
+          blocker_id: user.id,
+          blocked_id: targetUserId,
+        });
+
+      if (error) throw error;
+
+      showAlert('User Blocked', `${targetUserName} has been blocked.`);
+    } catch (error: any) {
+      console.error('Error blocking user:', error);
+      showAlert('Error', 'Failed to block user. Please try again.');
+    }
   };
 
-  // Handle sharing phone number (as target)
   const handleSharePhoneNumber = async () => {
     if (!user || userRole !== 'target' || !phoneNumber.trim()) {
-      Alert.alert('Invalid Input', 'Please enter a valid phone number.');
+      showAlert('Invalid Input', 'Please enter a valid phone number.');
       return;
     }
 
     if (!hasApproved) {
-      Alert.alert('Not Approved', 'Please approve the request first.');
+      showAlert('Not Approved', 'Please approve the request first.');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Note: Status remains 'approved', we're just sending the phone number
-
-      // Send the phone number via private message (RECOMMENDED)
       const { error: messageError } = await (supabase as any)
         .from('messages')
         .insert({
@@ -324,39 +340,35 @@ export default function PhoneNumberRequest({
 
       if (messageError) throw messageError;
 
-      // Notify requester (optional)
-      const { data: currentUserData } = await supabase
+      const { data: currentUserData } = await (supabase as any)
         .from('users')
         .select('first_name')
         .eq('id', user.id)
-        .single();
+        .limit(1);
 
       await (supabase as any).from('notifications').insert({
         user_id: targetUserId,
         type: 'phone_shared',
         title: 'Phone Number Shared 📞',
-        body: `${(currentUserData?.first_name) || 'Someone'} shared their phone number with you.`,
+        body: `${currentUserData?.[0]?.first_name || 'Someone'} shared their phone number with you.`,
         description: 'Check your private chat for details.',
         related_user_id: user.id,
         read: false,
       });
 
       setRequestStatus('approved');
-      setPhoneNumber(''); // Clear the input
-      Alert.alert(
-        'Sent! 📞',
-        'Your phone number has been sent securely in your private chat.',
-        [{ text: 'OK', onPress: () => (navigation as any).navigate('chat', { id: targetUserId }) }]
-      );
+      setPhoneNumber('');
+      showAlert('Sent! 📞', 'Your phone number has been sent securely in your private chat.');
+      (navigation as any).navigate('chat', { id: targetUserId });
     } catch (error: any) {
       console.error('Error sharing phone number:', error);
-      Alert.alert('Error', 'Failed to send phone number. Please try again.');
+      showAlert('Error', 'Failed to send phone number. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // UI Logic
+  // Target: pending approval UI
   if (userRole === 'target' && requestStatus === 'pending' && !hasApproved) {
     return (
       <View style={styles.approvalContainer}>
@@ -369,7 +381,11 @@ export default function PhoneNumberRequest({
             onPress={handleApproveRequest}
             disabled={loading}
           >
-            <Text style={styles.approveButtonText}>Approve</Text>
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.approveButtonText}>Approve</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.declineButton, loading && styles.disabledButton]}
@@ -394,6 +410,7 @@ export default function PhoneNumberRequest({
     );
   }
 
+  // Target: share phone number UI
   if (userRole === 'target' && hasApproved) {
     return (
       <View style={styles.inputContainer}>
@@ -437,23 +454,17 @@ export default function PhoneNumberRequest({
         ) : requestStatus === 'pending' ? (
           <>
             <IconSymbol name="clock.fill" size={20} color="#FF9500" />
-            <Text style={[styles.requestText, { color: '#FF9500' }]}>
-              Pending
-            </Text>
+            <Text style={[styles.requestText, { color: '#FF9500' }]}>Pending</Text>
           </>
         ) : requestStatus === 'approved' ? (
           <>
             <IconSymbol name="checkmark.circle.fill" size={20} color="#34C759" />
-            <Text style={[styles.requestText, { color: '#34C759' }]}>
-              Approved
-            </Text>
+            <Text style={[styles.requestText, { color: '#34C759' }]}>Approved</Text>
           </>
         ) : requestStatus === 'declined' ? (
           <>
             <IconSymbol name="xmark.circle.fill" size={20} color="#FF3B30" />
-            <Text style={[styles.requestText, { color: '#FF3B30' }]}>
-              Declined
-            </Text>
+            <Text style={[styles.requestText, { color: '#FF3B30' }]}>Declined</Text>
           </>
         ) : (
           <>

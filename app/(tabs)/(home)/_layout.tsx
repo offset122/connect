@@ -1,16 +1,19 @@
-import { Platform } from 'react-native';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 
 export default function HomeLayout() {
+  // Removed payment check from here - payment-new.tsx handles post-payment redirect
+  // and AuthContext already checks payment on app load
+
   return (
-    <Stack>
-      <Stack.Screen
-        name="index"
-        options={{
-          headerShown: Platform.OS === 'ios', // Show header on iOS with NativeTabs, hide on Android/Web
-          title: 'Home'
-        }}
-      />
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        animation: 'fade',
+      }}
+    >
+      <Stack.Screen name="index" />
+      <Stack.Screen name="profileview" />
     </Stack>
   );
 }

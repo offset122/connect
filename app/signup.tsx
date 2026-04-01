@@ -9,14 +9,15 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  useWindowDimensions
 } from "react-native";
 import DropdownPicker from '../components/DropdownPicker';
 import { supabase } from "./integrations/supabase/client";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import safeBack from '../utils/safeRouter';
-import { colors, commonStyles } from "../styles/commonStyles";
+import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../styles/commonStyles";
 import React, { useState } from "react";
 import { IconSymbol } from "../components/IconSymbol";
 import { useAuth } from "../contexts/AuthContext";
@@ -45,13 +46,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 32,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
     color: colors.textSecondary,
     lineHeight: 24,
   },
@@ -62,7 +61,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   label: {
-    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
@@ -398,6 +396,9 @@ const getAvatarImage = (filename: string) => {
 };
 
 export default function SignUpScreen() {
+  const { width } = useWindowDimensions();
+  const isLarge = width >= BREAKPOINTS.lg;
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -460,16 +461,16 @@ export default function SignUpScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScrollView
           style={styles.container}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, responsiveStyles.contentMaxWidth(isLarge)]}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
           <View style={styles.header}>
             <Pressable style={styles.backButton} onPress={() => safeBack(router)}>
-              <IconSymbol name="chevron.left" size={24} color={colors.text} />
+              <IconSymbol name="chevron.left" size={isLarge ? 28 : 24} color={colors.text} />
             </Pressable>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, responsiveStyles.title(isLarge)]}>Create Account</Text>
+            <Text style={[styles.subtitle, responsiveStyles.subtitle(isLarge)]}>
               Sign up to start your journey to finding meaningful connections
             </Text>
           </View>

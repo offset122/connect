@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import safeBack from '../utils/safeRouter';
 import { IconSymbol } from "../components/IconSymbol";
-import { colors, commonStyles } from "../styles/commonStyles";
+import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../styles/commonStyles";
 import { supabase } from "./integrations/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
 

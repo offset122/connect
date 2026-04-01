@@ -30,22 +30,26 @@ function InitialScreen() {
 
   // Global deep link handler
   useEffect(() => {
-    const handleDeepLink = (url: string | null) => {
-      if (!url) return;
-      
+    const handleDeepLink = (url: string | null | undefined) => {
+      if (!url || typeof url !== 'string') return;
       console.log('Global deep link handler:', url);
+      // Only handle custom scheme deep links (hannasconnect://)
+      // https:// links open in browser and follow the web flow
+      // Also handle Expo dev URLs in development
+      const isCustomScheme = url.startsWith('hannasconnect://');
+      const isExpoDev = url.startsWith('exp://') || url.startsWith('expo://');
       
-      // Check if this is a password reset link
-      if (url.includes('reset-password') || url.includes('type=recovery') || url.includes('auth/callback')) {
-        console.log('Navigating to reset-password screen');
-        router.push('/reset-password');
+      if (isCustomScheme && (url.includes('auth/callback') || url.includes('type=recovery'))) {
+        console.log('Deep link to auth/callback:', url);
+        router.push({ pathname: '/auth/callback', params: { url } });
+      } else if (isExpoDev) {
+        // Ignore Expo development URLs - they're for development only
+        console.log('Ignoring Expo dev URL:', url);
       }
     };
 
-    // Handle initial URL (when app is launched from deep link)
     Linking.getInitialURL().then(handleDeepLink);
 
-    // Handle deep links when app is already running
     const subscription = Linking.addEventListener('url', (event) => {
       handleDeepLink(event.url);
     });
@@ -72,6 +76,7 @@ function InitialScreen() {
       <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
       <Stack.Screen name="how-it-works" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="terms-and-conditions" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="child-safety-standards" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="signup" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="email-confirmation" options={{ animation: 'fade' }} />
       <Stack.Screen name="login" options={{ animation: 'slide_from_bottom' }} />

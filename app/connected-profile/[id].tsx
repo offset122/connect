@@ -62,11 +62,6 @@ type PhotoRequest = {
   request_status: 'pending' | 'approved' | 'declined';
 };
 
-type PhotoRequest = {
-  id: string;
-  request_status: 'pending' | 'approved' | 'declined';
-};
-
 export default function ConnectedProfileScreen() {
   const { id } = useLocalSearchParams();
   const [user, setUser] = useState<User | null>(null);

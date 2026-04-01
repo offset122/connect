@@ -21,7 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import safeBack from "../utils/safeRouter";
 import { IconSymbol } from "../components/IconSymbol";
-import { colors, commonStyles } from "../styles/commonStyles";
+import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../styles/commonStyles";
 import { supabase } from "./integrations/supabase/client";
 import PaystackService from "./integrations/paystack/service";
 import APP_CONFIG from "../constants/config";
@@ -39,8 +39,9 @@ const POLL_TIMEOUT_MS = 60_000;
 
 export default function PaymentScreen() {
   const { width } = useWindowDimensions();
-  const isSmall = width < 375;
-  const spacing = (n: number) => n * (isSmall ? 8 : 10);
+  const isLarge = width >= BREAKPOINTS.lg;
+  const isSmall = width < BREAKPOINTS.sm;
+  const spacing = (n: number) => n * (isSmall ? 8 : isLarge ? 12 : 10);
 
   const [phoneNumber, setPhoneNumber] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -137,13 +138,14 @@ export default function PaymentScreen() {
           return;
         }
 
-        if (profile.has_paid || profile.payment_status === "completed") {
-          if (!profile.first_name || !profile.age) {
-            if (mounted) router.replace("/registration");
-          } else {
-            if (mounted) router.replace("/(tabs)/(home)");
-          }
-          return;
+        // Use type assertion for profile access
+        const profileData = profile as any;
+        
+        if (profileData.has_paid || profileData.payment_status === "completed") {
+          // User has paid - stay on payment screen but don't redirect
+          console.log('[Payment] User has already paid, showing payment screen');
+          // Don't redirect - let them see the payment screen is complete
+          // AuthContext will handle navigation to home on next app load
         }
       } catch (err) {
         console.error("Initial user check error:", err);
@@ -155,9 +157,22 @@ export default function PaymentScreen() {
 
   // ---------- Deep-link handling ----------
   useEffect(() => {
-    const handleUrl = (event: { url: string }) => {
+    const handleUrl = (event: { url?: string } | null | undefined) => {
       try {
-        const u = new URL(event.url);
+        // Validate event and URL
+        if (!event || typeof event !== 'object' || typeof event.url !== 'string') {
+          console.warn('Invalid URL event:', event);
+          return;
+        }
+        
+        const url = event.url;
+        // Only handle custom scheme URLs for payment
+        if (!url.startsWith('hannasconnect://') && !url.startsWith('https://')) {
+          console.log('Ignoring non-custom scheme URL in payment:', url);
+          return;
+        }
+        
+        const u = new URL(url);
         const reference = u.searchParams.get("reference") || u.searchParams.get("tx_ref");
         if (reference) {
           verifyReferenceAndRedirect(reference);
@@ -485,11 +500,21 @@ export default function PaymentScreen() {
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
           <View style={[styles.root, { padding: spacing(2) }]}>
             {/* Header */}
             <View style={styles.header}>
-              <Pressable onPress={() => safeBack(router, "/(tabs)/(home)")}>
+              <Pressable onPress={() => {
+                // Prevent going back without payment - show alert instead
+                Alert.alert(
+                  'Payment Required',
+                  'You must complete payment to access the app. Are you sure you want to leave?',
+                  [
+                    { text: 'Stay', style: 'cancel' },
+                    { text: 'Leave', style: 'destructive', onPress: () => router.replace('/welcome') },
+                  ]
+                );
+              }}>
                 <IconSymbol name="chevron.left" size={24} color={colors.text} />
               </Pressable>
               <Text style={[styles.headerTitle, { fontSize: isSmall ? 18 : 20 }]}>Complete Payment</Text>
@@ -613,16 +638,21 @@ export default function PaymentScreen() {
                 <Text style={styles.sectionTitle}>M-Pesa STK Push Details</Text>
                 <Text style={styles.label}>Mobile Money Number</Text>
                 <TextInput
-                  ref={phoneInputRef}
-                  style={[styles.input, { paddingVertical: isSmall ? 12 : 14 }]}
-                  placeholder="e.g. 0712345678"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="phone-pad"
-                  value={phoneNumber}
-                  onChangeText={(t) => setPhoneNumber(t.replace(/\s/g, ""))}
-                  onFocus={onFocusPhone}
-                  returnKeyType="done"
-                />
+  ref={phoneInputRef}
+  style={styles.input}
+  placeholder="e.g. 0712345678"
+  placeholderTextColor={colors.textSecondary}
+  keyboardType="number-pad"
+  value={phoneNumber}
+  onChangeText={(t) => {
+    const cleaned = t.replace(/[^0-9]/g, "");
+    setPhoneNumber(cleaned);
+  }}
+  onFocus={onFocusPhone}
+  returnKeyType="done"
+  autoCapitalize="none"
+  maxLength={10}
+/>
                 <Text style={styles.hint}>
                   This number will receive the M-Pesa STK Push prompt.
                 </Text>
@@ -706,7 +736,7 @@ export default function PaymentScreen() {
               </View>
             </Modal>
           </View>
-        </TouchableWithoutFeedback>
+        </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

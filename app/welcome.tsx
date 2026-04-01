@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { colors, commonStyles } from "@/styles/commonStyles";
+import { colors, commonStyles, BREAKPOINTS } from "@/styles/commonStyles";
 
 const featureImages = [
   require("../assets/childless.jpg"),
@@ -30,9 +30,9 @@ const featureNames = [
 export default function WelcomeScreen() {
   const { width } = useWindowDimensions();
 
-  const isSmallScreen = width < 375;
-  const isMediumScreen = width >= 375 && width < 768;
-  const isLargeScreen = width >= 768;
+  const isSmallScreen = width < BREAKPOINTS.sm;
+  const isMediumScreen = width >= BREAKPOINTS.sm && width < BREAKPOINTS.lg;
+  const isLargeScreen = width >= BREAKPOINTS.lg;
 
   const logoSize = isSmallScreen ? 100 : isMediumScreen ? 120 : 140;
   const iconSize = isSmallScreen ? 70 : isMediumScreen ? 80 : 90;
@@ -81,16 +81,7 @@ export default function WelcomeScreen() {
                   resizeMode="cover"
                 />
               </View>
-              <View
-                style={[
-                  styles.logoGlow,
-                  {
-                    width: logoSize + 20,
-                    height: logoSize + 20,
-                    borderRadius: (logoSize + 20) / 2,
-                  },
-                ]}
-              />
+
             </View>
 
             <Text style={[styles.title, { fontSize: titleFontSize }]}>
@@ -202,6 +193,13 @@ export default function WelcomeScreen() {
                 onPress={() => router.push("/privacy-policy")}
               >
                 Privacy Policy
+              </Text>{" "}
+              , and acknowledge our{" "}
+              <Text
+                style={{ color: colors.primary, textDecorationLine: "underline" }}
+                onPress={() => router.push("/child-safety-standards")}
+              >
+                Child Safety Standards
               </Text>
             </Text>
           </View>
@@ -237,11 +235,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
     zIndex: 2,
     overflow: "hidden",
   },

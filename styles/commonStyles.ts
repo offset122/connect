@@ -1,5 +1,5 @@
 
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, ViewStyle, TextStyle, useWindowDimensions } from 'react-native';
 
 // Hanna's Connect Color Palette - 3 Primary Colors Design
 export const colors = {
@@ -26,6 +26,29 @@ export const colors = {
   overlay: 'rgba(0, 0, 0, 0.5)', // Overlay for modals
 };
 
+export const BREAKPOINTS = {
+  xs: 0,
+  sm: 375,
+  md: 414,
+  lg: 768,
+  xl: 1024,
+};
+
+export function useResponsive() {
+  const { width, height } = useWindowDimensions();
+  return {
+    width,
+    height,
+    isPhone: width < BREAKPOINTS.lg,
+    isTablet: width >= BREAKPOINTS.lg && width < BREAKPOINTS.xl,
+    isDesktop: width >= BREAKPOINTS.xl,
+    isLandscape: width > height,
+    isPortrait: height >= width,
+    isLargeScreen: width >= BREAKPOINTS.lg,
+    isSmallScreen: width < BREAKPOINTS.md,
+  };
+}
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -34,6 +57,30 @@ export const spacing = {
   xl: 20,
   xxl: 24,
   xxxl: 32,
+};
+
+export const responsiveSpacing = {
+  horizontal: { xs: 16, lg: 40 },
+  vertical: { xs: 16, lg: 24 },
+  inputGap: { xs: 12, lg: 16 },
+  cardPadding: { xs: 16, lg: 24 },
+  sectionGap: { xs: 20, lg: 32 },
+};
+
+export const responsiveFontSize = {
+  title: { xs: 28, sm: 30, lg: 36, xl: 40 },
+  subtitle: { xs: 18, sm: 20, lg: 24 },
+  heading: { xs: 18, lg: 22 },
+  body: { xs: 14, lg: 16 },
+  caption: { xs: 12, lg: 14 },
+  button: { xs: 16, lg: 18 },
+  icon: { xs: 20, lg: 24 },
+};
+
+export const responsivePadding = {
+  screen: { xs: 16, lg: 32 },
+  button: { xs: 14, lg: 18 },
+  input: { xs: 14, lg: 16 },
 };
 
 export const borderRadius = {
@@ -264,3 +311,77 @@ export const commonStyles = StyleSheet.create({
     fontFamily: fontFamilies.bold,
   },
 });
+
+export const responsiveStyles = {
+  screenPadding: (isLarge: boolean) => ({
+    paddingHorizontal: isLarge ? 40 : 20,
+    paddingVertical: isLarge ? 24 : 16,
+  }),
+  
+  contentMaxWidth: (isLarge: boolean) => ({
+    maxWidth: isLarge ? 500 : '100%',
+    alignSelf: isLarge ? 'center' : 'stretch',
+  }),
+  
+  logoSize: (isLarge: boolean) => ({
+    width: isLarge ? 150 : 120,
+    height: isLarge ? 150 : 120,
+    borderRadius: isLarge ? 75 : 60,
+  }),
+  
+  inputContainer: (isLarge: boolean) => ({
+    paddingHorizontal: isLarge ? 20 : 16,
+    paddingVertical: isLarge ? 18 : 16,
+    marginBottom: isLarge ? 20 : 16,
+  }),
+  
+  button: (isLarge: boolean) => ({
+    paddingVertical: isLarge ? 18 : 16,
+    paddingHorizontal: isLarge ? 32 : 24,
+  }),
+  
+  title: (isLarge: boolean) => ({
+    fontSize: isLarge ? 38 : 32,
+  }),
+  
+  subtitle: (isLarge: boolean) => ({
+    fontSize: isLarge ? 20 : 16,
+  }),
+  
+  heading: (isLarge: boolean) => ({
+    fontSize: isLarge ? 24 : 20,
+  }),
+  
+  body: (isLarge: boolean) => ({
+    fontSize: isLarge ? 17 : 15,
+    lineHeight: isLarge ? 28 : 24,
+  }),
+  
+  caption: (isLarge: boolean) => ({
+    fontSize: isLarge ? 14 : 12,
+  }),
+  
+  icon: (isLarge: boolean) => ({
+    size: isLarge ? 24 : 20,
+  }),
+  
+  gridColumns: (isLarge: boolean, isLandscape: boolean) => {
+    if (isLarge) return isLandscape ? 4 : 3;
+    return 2;
+  },
+  
+  cardWidth: (isLarge: boolean, width: number) => ({
+    width: isLarge ? (width - 80) / 3 : '100%',
+  }),
+  
+  avatar: (isLarge: boolean) => ({
+    size: isLarge ? 80 : 60,
+  }),
+  
+  gap: (isLarge: boolean) => ({
+    sm: isLarge ? 12 : 8,
+    md: isLarge ? 16 : 12,
+    lg: isLarge ? 24 : 16,
+    xl: isLarge ? 32 : 20,
+  }),
+};

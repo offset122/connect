@@ -5,12 +5,34 @@ import { useAuth } from '@/contexts/AuthContext';
 import { colors } from '@/styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+// Public pages that don't require authentication - used to prevent redirect loops
+const PUBLIC_PAGES = [
+  'privacy-policy',
+  'terms-and-conditions',
+  'support',
+  'how-it-works',
+  'disclaimer',
+  'welcome',
+  'child-safety-standards',
+];
+
+function isPublicPage() {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname || '/';
+  return PUBLIC_PAGES.some(page => path.includes(page)) || path === '/' || path === '';
+}
+
 export default function IndexScreen() {
   const { user, loading, checkUserFlow } = useAuth();
 
   useEffect(() => {
     // Wait for auth check to complete
     if (loading) return;
+
+    // If this is a public page, don't redirect to welcome
+    if (isPublicPage()) {
+      return;
+    }
 
     if (user) {
       // User is authenticated, check their flow status
@@ -28,6 +50,18 @@ export default function IndexScreen() {
         <View style={styles.content}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // For public pages, render a simple message while Expo Router handles the route
+  if (isPublicPage()) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.content}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading page...</Text>
         </View>
       </SafeAreaView>
     );

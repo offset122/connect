@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Stack, useRouter } from "expo-router";
 import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, RefreshControl, useWindowDimensions, Image, ImageBackground, TextInput } from "react-native";
 import { IconSymbol } from "../../../components/IconSymbol";
-import { colors, commonStyles, spacing, borderRadius } from "../../../styles/commonStyles";
+import { colors, commonStyles, spacing, borderRadius, responsiveStyles, BREAKPOINTS } from "../../../styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../integrations/supabase/client";
 import { calculateMatchPercentage, getMatchColor } from "../../../utils/matchmaking";
@@ -85,8 +85,12 @@ export default function DiscoverScreen() {
 
   const { width } = useWindowDimensions();
   const router = useRouter();
-  // Calculate card width: Total width - (2 * horizontal padding) - (1 * gap) / 2 cards
-  const cardWidth = (width - (20 * 2) - 16) / 2;
+  const isLarge = width >= BREAKPOINTS.lg;
+  const isLandscape = width > 500;
+  // Calculate card width: responsive based on screen size
+  const cardWidth = isLarge 
+    ? (width - (40 * 2) - (isLandscape ? 32 : 24)) / (isLandscape ? 4 : 3)
+    : (width - (20 * 2) - 16) / 2;
 
   const fetchUsers = useCallback(async () => {
     try {

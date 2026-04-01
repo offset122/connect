@@ -4,8 +4,20 @@ import { router } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
 import APP_CONFIG from '../constants/config';
 
+// Public pages that don't require authentication
+const PUBLIC_PAGES = [
+  'privacy-policy',
+  'terms-and-conditions',
+  'support',
+  'how-it-works',
+  'disclaimer',
+  'index',
+  'welcome',
+  'child-safety-standards',
+];
+
 interface User {
-  id: string;
+  id: string;       // Supabase AUTH uuid — never the database row id
   email: string;
   profile?: any;
 }
@@ -29,28 +41,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // --- 1. INITIAL LOAD & LISTENER SETUP ---
   useEffect(() => {
-    // Check for existing session and set initial user/loading state
+    // Safely check for auth callback URL - guard against undefined window.location
+    const isAuthCallback = typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname.includes('auth/callback');
+    
+    if (isAuthCallback) {
+      setLoading(false);
+      return;
+    }
+
+    // Check if this is a public page that doesn't require authentication
+    const isPublicPage = typeof window !== 'undefined' && window.location && window.location.pathname && PUBLIC_PAGES.some(page => window.location.pathname.includes(page));
+    
+    if (isPublicPage) {
+      console.log('Public page detected, skipping auth check');
+      setLoading(false);
+      return;
+    }
+
     checkAuthState();
 
-    // Listen for auth state changes (email verification, sign in/out)
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event);
 
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('Password recovery event — skipping flow check');
+        return;
+      }
+
       if (event === 'SIGNED_IN' && session?.user) {
-        // When signed in via listener (e.g., email confirmation), reload state and check flow
+        const isCallback = typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname.includes('auth/callback');
+        if (isCallback) {
+          return;
+        }
         console.log('Auth state changed: SIGNED_IN - checking user flow...');
-        const userProfile = {
-          id: session.user.id,
+        // Always store the AUTH uuid, never the DB row id
+        const userProfile: User = {
+          id: session.user.id,           // ← auth uuid
           email: session.user.email || '',
-          profile: session.user.user_metadata
+          profile: session.user.user_metadata,
         };
         setUser(userProfile);
-        
-        // This is the crucial step: check user flow after ANY successful sign-in
-        await checkUserFlow(userProfile.id);
+        // Don't await - let it run in background
+        checkUserFlow(session.user.id).catch(err => 
+          console.log('Background checkUserFlow error:', err)
+        );
       } else if (event === 'SIGNED_OUT') {
+        // Safely check for password reset flow - guard against undefined window.location
+        const isPasswordResetFlow =
+          typeof window !== 'undefined' &&
+          window.location &&
+          window.location.pathname &&
+          window.location.pathname.includes('reset-password');
+
         setUser(null);
-        router.replace('/welcome');
+        if (!isPasswordResetFlow) {
+          router.replace('/welcome');
+        }
       }
     });
 
@@ -58,68 +104,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription?.unsubscribe();
   }, []);
 
-  // --- 2. Resolve initial auth state and profile ---
+  // --- 2. Resolve initial auth state ---
   const checkAuthState = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth timeout')), 5000)
+      );
       
+      const sessionPromise = supabase.auth.getSession();
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+
       if (session?.user) {
-        const authUserId = session.user.id;
-        
-        // Try to get the actual user profile from the database
-        const { data: userData, error: userError } = await (supabase as any)
+        const authUuid = session.user.id; // always the auth uuid
+
+        // Query with timeout
+        const userQueryPromise = supabase
           .from('users')
           .select('id, first_name, email, has_paid, payment_status')
-          .eq('auth_id', authUserId)
-          .single();
-
-        let resolvedUser: User;
-
-        if (!userError && userData) {
-          console.log('Found user profile in database:', userData);
-          resolvedUser = {
-            id: userData.id, // Use database user ID for consistency
-            email: userData.email || session.user.email || '',
-            profile: userData
-          };
-        } else {
-          console.log('No user profile found in database, setting basic auth user');
-          // No profile found - set basic auth user (will trigger registration)
-          resolvedUser = {
-            id: authUserId,
-            email: session.user.email || '',
-            profile: session.user.user_metadata
-          };
-        }
+          .eq('auth_id', authUuid)
+          .maybeSingle();
+          
+        const userTimeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('User query timeout')), 10000)
+        );
         
+        const { data: userData, error: userError } = await Promise.race([userQueryPromise, userTimeoutPromise]) as any;
+
+        const resolvedUser: User = {
+          id: authUuid,
+          email: userData?.email || session.user.email || '',
+          profile: userData ?? session.user.user_metadata,
+        };
+
         setUser(resolvedUser);
-        // Direct to the correct place *after* resolving the user state
-        await checkUserFlow(resolvedUser.id);
-        
+        await checkUserFlow(authUuid);
       } else {
-        // No session found, redirect to welcome
-        router.replace('/welcome');
+        // Check if this is a public page - if so, don't redirect to welcome
+        const isPublicPage = PUBLIC_PAGES.some(page => window.location.pathname.includes(page));
+        if (!isPublicPage) {
+          router.replace('/welcome');
+        }
       }
     } catch (error) {
       console.log('Error checking auth state:', error);
-      router.replace('/welcome');
+      // Don't block - just set loading to false and continue
+      setLoading(false);
     } finally {
-      // Set loading to false once the initial check and routing is complete
       setLoading(false);
     }
   };
 
-  // --- 3. Sign In Logic ---
+  // --- 3. Sign In ---
   const signIn = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Clear any potentially stale session data from localStorage before signing in
+      // This ensures that after a password reset, the old cached tokens don't interfere
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('supabase') || key.includes('sb-'))) {
+              keysToRemove.push(key);
+            }
+          }
+          if (keysToRemove.length > 0) {
+            console.log('Clearing stale session keys before login:', keysToRemove);
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+          }
+        } catch (storageError) {
+          console.log('Error clearing storage:', storageError);
+        }
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
-        console.log('AuthContext signIn error:', error);
-        // Handle unconfirmed email specifically
         if (error.message.includes('Email not confirmed') || error.message.includes('confirmation')) {
           return { success: false, error: 'Please check your email and confirm your account before logging in.' };
         }
@@ -127,29 +188,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        // Use the auth listener (onAuthStateChange) to handle user state and flow, 
-        // as it fires reliably after sign-in.
+        // ✅ Force refresh session to ensure any password reset changes are recognized
+        // This prevents stale session issues after password reset
+        try {
+          await supabase.auth.refreshSession();
+        } catch (refreshError) {
+          // Ignore refresh errors - main login succeeded
+          console.log('Post-login session refresh:', refreshError);
+        }
         return { success: true };
       }
-
       return { success: false, error: 'No user returned after sign in' };
     } catch (error: any) {
       return { success: false, error: error.message || 'Sign in failed' };
     }
   };
 
-  // --- 4. Sign Up Logic ---
+  // --- 4. Sign Up ---
   const signUp = async (email: string, password: string) => {
     try {
-      console.log('AuthContext: Starting signup for email:', email);
-
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password
-      });
+      const { data, error } = await supabase.auth.signUp({ email, password });
 
       if (error) {
-        console.log('AuthContext: Signup error:', error);
         if (error.message.includes('already registered')) {
           return { success: false, error: 'An account with this email already exists. Please use a different email or try logging in.' };
         }
@@ -157,24 +217,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        console.log('AuthContext: Signup successful, user ID:', data.user.id);
-        // On successful signup, redirect based on payment requirement
-        if (APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-          router.replace('/payment-new' as any);
-        } else {
-          router.replace('/registration' as any);
-        }
+        router.replace('/registration' as any);
         return { success: true, requiresConfirmation: true };
       }
 
       return { success: false, error: 'No user returned from signup' };
     } catch (error: any) {
-      console.log('AuthContext: Signup failed with error:', error);
       return { success: false, error: error.message || 'Sign up failed' };
     }
   };
 
-  // --- 5. Sign Out Logic ---
+  // --- 5. Sign Out ---
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -186,62 +239,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // --- 6. Centralized Flow Check for Redirection ---
-  const checkUserFlow = async (id?: string) => {
-    // Use the ID passed in or the current user state
-    const currentId = id || user?.id;
-    if (!currentId) return;
+  // --- 6. Centralized Flow Check ---
+  // Always receives / uses the Supabase AUTH uuid, never a DB row id.
+  // Does NOT navigate on its own — returns a destination so the caller
+  // decides when to navigate (avoids racing with RegistrationScreen).
+  const checkUserFlow = async (authUuid?: string): Promise<void> => {
+    const currentAuthId = authUuid || user?.id;
+    if (!currentAuthId) return;
 
     try {
-      // Check if user has a complete profile in the users table
-      const { data: userData, error: userError } = await (supabase as any)
+      // Add timeout for the query
+      const queryPromise = supabase
         .from('users')
         .select('*')
-        .eq('auth_id', currentId)
+        .eq('auth_id', currentAuthId)
         .maybeSingle();
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('User query timeout')), 10000)
+      );
+      
+      const { data: userData, error: userError } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
-      // No profile found - redirect based on payment requirement
       if (userError || !userData) {
-        console.log('No user profile found, redirecting');
-        if (APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-          router.replace('/payment-new' as any);
-        } else {
-          router.replace('/registration' as any);
-        }
+        console.log('No user profile found, redirecting to registration');
+        router.replace('/registration' as any);
         return;
       }
 
-      console.log('User data found:', userData);
+      console.log('User data found:', userData.id, userData.first_name);
 
-      // Update AuthContext user state with database profile
-      setUser(prev => ({
-        id: userData.id,
+      // Keep context in sync — store auth uuid, not DB row id
+      setUser({
+        id: currentAuthId,              // ← auth uuid
         email: userData.email,
-        profile: userData
-      }));
+        profile: userData,
+      });
 
-      // Check if user has completed payment (or skip if payment disabled)
-      const hasPaid = !APP_CONFIG.FEATURES.REQUIRE_PAYMENT || userData.has_paid === true || userData.payment_status === 'completed';
+      const hasPaid =
+        !APP_CONFIG.FEATURES.REQUIRE_PAYMENT ||
+        userData.has_paid === true ||
+        userData.payment_status === 'completed';
 
       if (!hasPaid) {
         console.log('Payment not completed, redirecting to payment');
-        router.replace('/payment-new' as any); 
+        router.replace('/payment-new' as any);
         return;
       }
 
-      // Payment complete but profile incomplete - check if registration is done
-      // If first_name is missing, assume registration is incomplete
       if (!userData.first_name || !userData.age) {
-        console.log('Payment complete but registration incomplete, redirecting to registration');
-        router.replace('/registration');
+        console.log('Registration incomplete, redirecting to registration');
+        router.replace('/registration' as any);
         return;
       }
 
-      // Everything is complete, go to main app
+      // ✅ Profile complete — navigate to home (no setTimeout)
       console.log('User flow complete, redirecting to home');
-      setTimeout(() => {
-        router.replace('/(tabs)/(home)');
-      }, 100); // Small delay to ensure router navigation registers
+      router.replace('/(tabs)/(home)');
     } catch (error) {
       console.log('Error checking user flow:', error);
       router.replace('/welcome');
@@ -256,7 +310,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signOut,
       checkUserFlow,
-      setIsResettingPassword
+      setIsResettingPassword,
     }}>
       {children}
     </AuthContext.Provider>

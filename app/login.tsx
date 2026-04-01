@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,24 +9,48 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import safeBack from "@/utils/safeRouter";
 import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles } from "@/styles/commonStyles";
+import {
+  colors,
+  commonStyles,
+  responsiveStyles,
+  BREAKPOINTS,
+} from "@/styles/commonStyles";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/app/integrations/supabase/client";
 
 export default function LoginScreen() {
+  const { width } = useWindowDimensions();
+  const isLarge = width >= BREAKPOINTS.lg;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   const { signIn } = useAuth();
 
+  // ✅ Cross-platform alert
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleLogin = async () => {
+    setErrorMessage("");
+
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert("Error", "Please fill in all fields");
       return;
     }
 
@@ -35,28 +59,53 @@ export default function LoginScreen() {
       const result = await signIn(email.trim(), password);
 
       if (!result.success) {
+        let message = "Invalid email or password";
+
         if (
           result.error?.includes("confirm your account") ||
           result.error?.includes("Email not confirmed")
         ) {
-          Alert.alert(
-            "Email Confirmation Required",
-            "Please check your email and click the confirmation link before logging in."
-          );
-        } else {
-          Alert.alert(
-            "Login Failed",
-            result.error || "Invalid email or password"
-          );
+          message =
+            "Please check your email and confirm your account before logging in.";
+        } else if (
+          result.error?.includes("Invalid email or password") ||
+          result.error?.includes("invalid_credentials") ||
+          result.error?.includes("wrong password")
+        ) {
+          message =
+            "Invalid email or password. Please check your credentials.";
+        } else if (result.error) {
+          message = result.error;
         }
+
+        // ✅ Inline error (primary UX)
+        setErrorMessage(message);
+
+        // ✅ Optional popup (fallback)
+        showAlert("Login Failed", message);
+
         setLoading(false);
         return;
       }
+
+      // ✅ Force refresh session after successful login
+      // This ensures any password reset changes are fully recognized
+      // and prevents stale session issues
+      try {
+        await supabase.auth.refreshSession();
+      } catch (refreshError) {
+        // Ignore refresh errors - main login succeeded
+        console.log("Session refresh after login:", refreshError);
+      }
+
+      setLoading(false);
     } catch (error: any) {
-      Alert.alert(
-        "Login Failed",
-        error.message || "An unexpected error occurred"
-      );
+      const message =
+        error.message || "An unexpected error occurred. Try again.";
+
+      setErrorMessage(message);
+      showAlert("Login Failed", message);
+
       setLoading(false);
     }
   };
@@ -65,39 +114,65 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={commonStyles.safeArea}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          responsiveStyles.contentMaxWidth(isLarge),
+        ]}
+      >
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={handleBack} style={styles.backButton}>
-            <IconSymbol name="chevron.left" size={24} color={colors.primary} />
+            <IconSymbol
+              name="chevron.left"
+              size={isLarge ? 28 : 24}
+              color={colors.primary}
+            />
           </Pressable>
         </View>
 
         {/* Logo */}
         <View style={styles.logoWrapper}>
-          <View style={styles.logoCircle}>
+          <View
+            style={[styles.logoCircle, responsiveStyles.logoSize(isLarge)]}
+          >
             <Image
               source={require("../assets/images/logoh.jpg")}
-              style={styles.logoImage}
+              style={[styles.logoImage, responsiveStyles.logoSize(isLarge)]}
               resizeMode="cover"
             />
           </View>
         </View>
 
         {/* Title */}
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, responsiveStyles.title(isLarge)]}>
+          Welcome Back
+        </Text>
+        <Text style={[styles.subtitle, responsiveStyles.subtitle(isLarge)]}>
           Sign in to continue your journey
         </Text>
 
         {/* Form */}
         <View style={styles.form}>
+          {/* 🔴 INLINE ERROR */}
+          {errorMessage ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
           {/* Email */}
-          <View style={styles.inputContainer}>
+          <View
+            style={[
+              styles.inputContainer,
+              responsiveStyles.inputContainer(isLarge),
+            ]}
+          >
             <View style={styles.inputIconContainer}>
               <IconSymbol
                 name="envelope.fill"
-                size={20}
+                size={isLarge ? 22 : 20}
                 color={colors.textSecondary}
               />
             </View>
@@ -113,11 +188,16 @@ export default function LoginScreen() {
           </View>
 
           {/* Password */}
-          <View style={styles.inputContainer}>
+          <View
+            style={[
+              styles.inputContainer,
+              responsiveStyles.inputContainer(isLarge),
+            ]}
+          >
             <View style={styles.inputIconContainer}>
               <IconSymbol
                 name="lock.fill"
-                size={20}
+                size={isLarge ? 22 : 20}
                 color={colors.textSecondary}
               />
             </View>
@@ -136,7 +216,7 @@ export default function LoginScreen() {
             >
               <IconSymbol
                 name={showPassword ? "eye.slash.fill" : "eye.fill"}
-                size={20}
+                size={isLarge ? 22 : 20}
                 color={colors.textSecondary}
               />
             </Pressable>
@@ -147,14 +227,23 @@ export default function LoginScreen() {
             style={styles.forgotPassword}
             onPress={() => router.push("/reset-password")}
           >
-            <Text style={styles.forgotPasswordText}>
+            <Text
+              style={[
+                styles.forgotPasswordText,
+                responsiveStyles.caption(isLarge),
+              ]}
+            >
               Forgot Password?
             </Text>
           </Pressable>
 
           {/* Login Button */}
           <Pressable
-            style={[styles.loginButton, loading && styles.buttonDisabled]}
+            style={[
+              styles.loginButton,
+              responsiveStyles.button(isLarge),
+              loading && styles.buttonDisabled,
+            ]}
             onPress={handleLogin}
             disabled={loading}
           >
@@ -162,10 +251,17 @@ export default function LoginScreen() {
               <ActivityIndicator color={colors.card} />
             ) : (
               <>
-                <Text style={styles.loginButtonText}>Sign In</Text>
+                <Text
+                  style={[
+                    styles.loginButtonText,
+                    { fontSize: isLarge ? 18 : 16 },
+                  ]}
+                >
+                  Sign In
+                </Text>
                 <IconSymbol
                   name="arrow.right"
-                  size={20}
+                  size={isLarge ? 22 : 20}
                   color={colors.card}
                 />
               </>
@@ -175,7 +271,11 @@ export default function LoginScreen() {
           {/* Divider */}
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
+            <Text
+              style={[styles.dividerText, responsiveStyles.caption(isLarge)]}
+            >
+              OR
+            </Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -184,14 +284,16 @@ export default function LoginScreen() {
             onPress={() => router.push("/how-it-works")}
             style={styles.signUpLink}
           >
-            <Text style={styles.signUpLinkText}>
+            <Text
+              style={[styles.signUpLinkText, responsiveStyles.body(isLarge)]}
+            >
               Don't have an account?{" "}
               <Text style={styles.signUpLinkBold}>Sign Up</Text>
             </Text>
           </Pressable>
         </View>
 
-        {/* Help Section → Support Page */}
+        {/* Support */}
         <Pressable
           style={styles.supportButton}
           onPress={() => router.push("/support")}
@@ -199,10 +301,12 @@ export default function LoginScreen() {
           <View style={styles.helpSection}>
             <IconSymbol
               name="questionmark.circle.fill"
-              size={20}
+              size={isLarge ? 22 : 20}
               color={colors.textSecondary}
             />
-            <Text style={styles.helpText}>
+            <Text
+              style={[styles.helpText, responsiveStyles.caption(isLarge)]}
+            >
               Need help? Contact support
             </Text>
           </View>
@@ -214,7 +318,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20 },
+  content: { padding: 20, paddingBottom: 40 },
 
   header: { marginBottom: 20 },
   backButton: { width: 40, height: 40, justifyContent: "center" },
@@ -225,31 +329,39 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
     backgroundColor: colors.card,
     justifyContent: "center",
     alignItems: "center",
     elevation: 6,
   },
-  logoImage: { width: 120, height: 120, borderRadius: 60 },
+  logoImage: { resizeMode: "cover" },
 
   title: {
-    fontSize: 32,
     fontWeight: "700",
     color: colors.text,
     textAlign: "center",
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
     color: colors.textSecondary,
     textAlign: "center",
     marginBottom: 32,
   },
 
   form: { width: "100%" },
+
+  errorBox: {
+    backgroundColor: "#ffebee",
+    borderColor: "#f44336",
+    borderWidth: 1,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: "#b71c1c",
+    fontWeight: "500",
+  },
 
   inputContainer: {
     flexDirection: "row",
@@ -258,8 +370,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    marginBottom: 16,
-    paddingHorizontal: 16,
     elevation: 1,
   },
   inputIconContainer: { marginRight: 12 },
@@ -273,7 +383,6 @@ const styles = StyleSheet.create({
 
   forgotPassword: { alignSelf: "flex-end", marginBottom: 24 },
   forgotPasswordText: {
-    fontSize: 14,
     color: colors.primary,
     fontWeight: "600",
   },
@@ -281,7 +390,6 @@ const styles = StyleSheet.create({
   loginButton: {
     flexDirection: "row",
     backgroundColor: colors.primary,
-    paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -289,7 +397,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   loginButtonText: {
-    fontSize: 18,
     fontWeight: "700",
     color: colors.card,
   },
@@ -307,12 +414,11 @@ const styles = StyleSheet.create({
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
   dividerText: {
     marginHorizontal: 16,
-    fontSize: 14,
     color: colors.textSecondary,
   },
 
   signUpLink: { alignItems: "center", paddingVertical: 12 },
-  signUpLinkText: { fontSize: 16, color: colors.textSecondary },
+  signUpLinkText: { color: colors.textSecondary },
   signUpLinkBold: { fontWeight: "700", color: colors.primary },
 
   supportButton: { marginTop: 16 },
@@ -323,5 +429,5 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  helpText: { fontSize: 14, color: colors.textSecondary },
+  helpText: { color: colors.textSecondary },
 });

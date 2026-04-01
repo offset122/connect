@@ -13,12 +13,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import safeBack from '../utils/safeRouter';
 import { IconSymbol } from '../components/IconSymbol';
-import { colors, commonStyles } from '../styles/commonStyles';
+import { colors, commonStyles, BREAKPOINTS } from '../styles/commonStyles';
 import DropdownPicker from '../components/DropdownPicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -27,9 +26,15 @@ import {
   COUNTRIES,
   KENYAN_COUNTIES,
 } from '../constants/RegistrationData';
-import { supabase } from './integrations/supabase/client'; // Fixed path
+import { supabase } from './integrations/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import APP_CONFIG from '../constants/config';
+// DateTimePicker is native-only; on web we render a plain HTML date input
+const isWebPlatform = Platform.OS === 'web';
+let DateTimePicker: any = null;
+if (!isWebPlatform) {
+  DateTimePicker = require('@react-native-community/datetimepicker').default;
+}
 
 interface RegistrationFormData {
   avatar: string;
@@ -73,19 +78,21 @@ const formatDateForDatabase = (input: string): string | null => {
     year = century + year;
   }
 
-  // Validate numbers
   const d = parseInt(day, 10);
   const m = parseInt(month, 10);
   const y = parseInt(year, 10);
   if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
   if (d < 1 || d > 31 || m < 1 || m > 12) return null;
 
-  // Pad with leading zeros
   const formattedDate = `${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}/${y}`;
 
-  // Validate if it's a real date
   const date = new Date(y, m - 1, d);
-  if (isNaN(date.getTime()) || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  if (
+    isNaN(date.getTime()) ||
+    date.getFullYear() !== y ||
+    date.getMonth() !== m - 1 ||
+    date.getDate() !== d
+  ) return null;
 
   return formattedDate;
 };
@@ -100,23 +107,28 @@ const formatDateToString = (date: Date): string => {
 
 export default function RegistrationScreen() {
   const { width } = useWindowDimensions();
+  const isLarge = width >= BREAKPOINTS.lg;
+  const isSmall = width < BREAKPOINTS.sm;
+
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
   const { user, checkUserFlow } = useAuth();
   const totalSteps = 3;
 
-  const isSmallScreen = width < 375;
-  const contentPadding = isSmallScreen ? 16 : 20;
-  const titleFontSize = isSmallScreen ? 20 : 24;
-  const textFontSize = isSmallScreen ? 14 : 16;
-  const inputFontSize = isSmallScreen ? 14 : 16;
-  const avatarSize = isSmallScreen ? 60 : 80;
-  const inputPaddingVertical = isSmallScreen ? 12 : 14;
-  const inputPaddingHorizontal = isSmallScreen ? 14 : 16;
-  const stepMarginBottom = isSmallScreen ? 6 : 8;
-  const descriptionMarginBottom = isSmallScreen ? 20 : 24;
-  
+  const contentPadding = isSmall ? 16 : isLarge ? 24 : 20;
+  const titleFontSize = isSmall ? 20 : isLarge ? 28 : 24;
+  const textFontSize = isSmall ? 14 : isLarge ? 17 : 16;
+  const inputFontSize = isSmall ? 14 : isLarge ? 17 : 16;
+  const avatarSize = isSmall ? 60 : isLarge ? 100 : 80;
+  const inputPaddingVertical = isSmall ? 12 : isLarge ? 18 : 14;
+  const inputPaddingHorizontal = isSmall ? 14 : isLarge ? 20 : 16;
+  const stepMarginBottom = isSmall ? 6 : 8;
+  const descriptionMarginBottom = isSmall ? 20 : isLarge ? 32 : 24;
+
   const [formData, setFormData] = useState<RegistrationFormData>({
     avatar: '',
     name: '',
@@ -145,8 +157,6 @@ export default function RegistrationScreen() {
     partnerExpectations: '',
     doNotContactMeIf: '',
   });
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const fieldLabels: Record<keyof RegistrationFormData, string> = {
     avatar: 'Avatar',
@@ -187,7 +197,6 @@ export default function RegistrationScreen() {
         router.replace('/signup');
         return;
       }
-
       const savedAvatar = await AsyncStorage.getItem('selectedAvatar');
       if (savedAvatar) {
         setFormData(prev => ({ ...prev, avatar: savedAvatar }));
@@ -204,13 +213,11 @@ export default function RegistrationScreen() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-
-  // ✅ Enhanced validation: all fields must be answered
   const validateStep = (stepNumber: number): boolean => {
     const baseRequiredFields: { [key: number]: (keyof RegistrationFormData)[] } = {
       1: ['name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids'],
       2: ['hivStatus', 'religion', 'believeInMarriage', 'wantKidsInFuture', 'hasPhysicalDisability', 'hasCriticalIllness'],
-      3: ['introduceYourself', 'describeAppearance', 'lookingForAppearance', 'partnerExpectations', 'doNotContactMeIf']
+      3: ['introduceYourself', 'describeAppearance', 'lookingForAppearance', 'partnerExpectations', 'doNotContactMeIf'],
     };
 
     const fields = baseRequiredFields[stepNumber] || [];
@@ -222,7 +229,6 @@ export default function RegistrationScreen() {
       }
     }
 
-    // Step 1 conditionals
     if (stepNumber === 1) {
       if (formData.countryOfResidence === 'Kenya') {
         if (!formData.county || formData.county.trim() === '') {
@@ -248,7 +254,6 @@ export default function RegistrationScreen() {
       }
     }
 
-    // Step 2 conditionals
     if (stepNumber === 2) {
       if (formData.hasPhysicalDisability === 'Yes') {
         if (!formData.physicalDisabilityDetails || formData.physicalDisabilityDetails.trim() === '') {
@@ -263,8 +268,6 @@ export default function RegistrationScreen() {
         }
       }
     }
-
-    // Step 3: all already in base list
 
     return true;
   };
@@ -295,7 +298,7 @@ export default function RegistrationScreen() {
     const minDate = new Date(now.getFullYear() - maxAge, now.getMonth(), now.getDate());
     const maxDate = new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate());
 
-    return (dob >= minDate && dob <= maxDate) ? dob : null;
+    return dob >= minDate && dob <= maxDate ? dob : null;
   };
 
   const calculateAge = (dateOfBirth: string): number => {
@@ -310,28 +313,73 @@ export default function RegistrationScreen() {
     return age;
   };
 
+  // ✅ Web-specific error handling for date of birth
+  const validateDateOfBirth = (input: string): { valid: boolean; error?: string } => {
+    if (!input || input.trim() === '') {
+      return { valid: false, error: 'Please enter your date of birth.' };
+    }
+    
+    const dob = parseDateOfBirth(input);
+    if (!dob) {
+      return { valid: false, error: 'Please enter a valid date in dd/mm/yyyy format.' };
+    }
+    
+    const age = calculateAge(input);
+    if (age < 25) {
+      return { valid: false, error: 'You must be 25 years or older to register. Please enter a valid date of birth.' };
+    }
+    
+    if (age > 120) {
+      return { valid: false, error: 'Please enter a valid date of birth. Age cannot exceed 120 years.' };
+    }
+    
+    return { valid: true };
+  };
+
+  // ✅ Handle date change for native DateTimePicker
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const formatted = formatDateToString(selectedDate);
+      updateFormData('dateOfBirth', formatted);
+    }
+  };
+
   const handleNext = () => {
+    // Clear previous date errors
+    setDateError(null);
+    
     if (step === 1) {
       const dobInput = formData.dateOfBirth.trim();
-      if (!dobInput) {
-        Alert.alert('Validation', 'Please enter your date of birth.');
-        return;
-      }
-      const dob = parseDateOfBirth(dobInput);
-      if (!dob) {
-        Alert.alert('Invalid Date', 'Please enter a valid date of birth in dd/mm/yyyy format.');
-        return;
-      }
-      const age = calculateAge(dobInput);
-      if (age < 25) {
-        Alert.alert('Age Requirement', 'You must be 25 years or older to register.');
-        return;
+      
+      // Web-specific validation
+      if (isWebPlatform) {
+        const validation = validateDateOfBirth(dobInput);
+        if (!validation.valid) {
+          setDateError(validation.error || 'Invalid date of birth');
+          Alert.alert('Age Requirement', validation.error || 'You must be 25 years or older to register.');
+          return;
+        }
+      } else {
+        // Native validation
+        if (!dobInput) {
+          Alert.alert('Validation', 'Please enter your date of birth.');
+          return;
+        }
+        const dob = parseDateOfBirth(dobInput);
+        if (!dob) {
+          Alert.alert('Invalid Date', 'Please enter a valid date of birth in dd/mm/yyyy format.');
+          return;
+        }
+        const age = calculateAge(dobInput);
+        if (age < 25) {
+          Alert.alert('Age Requirement', 'You must be 25 years or older to register.');
+          return;
+        }
       }
     }
 
-    if (!validateStep(step)) {
-      return;
-    }
+    if (!validateStep(step)) return;
 
     if (step < totalSteps) {
       setStep(step + 1);
@@ -348,23 +396,71 @@ export default function RegistrationScreen() {
     }
   };
 
+  // ── Helper: navigate after successful save ────────────────────────────────
+  // AuthContext.checkUserFlow is NOT called here — it would re-query the DB
+  // and race with this navigation. We already know the user's state from the
+  // DB operations above, so navigate directly.
+  const navigateAfterSave = async (hasPaid: boolean, userId: string) => {
+    console.log('[DEBUG] navigateAfterSave START:', { hasPaid, userId, requirePayment: APP_CONFIG.FEATURES.REQUIRE_PAYMENT });
+    
+    if (!hasPaid && !APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
+      console.log('[DEBUG] Case 1: Setting user to paid (REQUIRE_PAYMENT is false)');
+      await supabase.from('users').update({
+        has_paid: true,
+        payment_status: 'completed',
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }).eq('id', userId);
+    }
+
+    const destination =
+      hasPaid || !APP_CONFIG.FEATURES.REQUIRE_PAYMENT
+        ? '/(tabs)/(home)'
+        : '/payment-new';
+
+    console.log('[DEBUG] Navigation destination:', destination, { hasPaid, requirePayment: APP_CONFIG.FEATURES.REQUIRE_PAYMENT });
+    router.replace(destination as any);
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
+
+    // Declare nextDestination outside try so finally can navigate
+    let navigateFn: (() => Promise<void>) | null = null;
+    
+    // Fallback timeout to prevent infinite loading on web
+    const TIMEOUT_MS = 15000;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let isResolved = false;
+
+    const resolveWithTimeout = (fn: () => void | Promise<void>) => {
+      if (isResolved) return;
+      isResolved = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      fn();
+    };
+
     try {
+      // Set up timeout fallback for web
+      timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          console.warn('Registration timeout - forcing navigation');
+          isResolved = true;
+          setLoading(false);
+          router.replace('/(tabs)/(home)');
+        }
+      }, TIMEOUT_MS);
+
       if (!user) {
         router.replace('/signup');
         return;
       }
 
-      // ✅ Convert date to MM/DD/YYYY for database
       const formattedDate = formatDateForDatabase(formData.dateOfBirth);
-      if (!formattedDate) {
-        throw new Error('Invalid date format for database.');
-      }
+      if (!formattedDate) throw new Error('Invalid date format for database.');
 
       const age = calculateAge(formData.dateOfBirth);
 
-      // Prepare common data
       const commonData = {
         auth_id: user.id,
         email: user.email,
@@ -372,8 +468,8 @@ export default function RegistrationScreen() {
         last_name: formData.name.trim().split(' ').slice(1).join(' ') || null,
         username: formData.username.trim() || null,
         gender: formData.gender || null,
-        age: age,
-        date_of_birth: formattedDate, // ✅ MM/DD/YYYY format
+        age,
+        date_of_birth: formattedDate,
         nationality: formData.nationality || null,
         country_of_residence: formData.countryOfResidence || null,
         city: formData.countryOfResidence === 'Kenya' ? null : (formData.city || null),
@@ -398,153 +494,121 @@ export default function RegistrationScreen() {
         updated_at: new Date().toISOString(),
       };
 
+      // ── 1. Try to find existing record by auth_id ──
       const { data: existingUser } = await supabase
         .from('users')
-        .select('id, has_paid, is_active')
+        .select('id, has_paid')
         .eq('auth_id', user.id)
         .maybeSingle();
 
       if (existingUser) {
         const { error: updateError } = await supabase
           .from('users')
-          .update({ ...commonData })
+          .update(commonData)
           .eq('id', existingUser.id);
 
         if (updateError) {
           if (updateError.code === '23505' && updateError.message?.includes('username')) {
-            Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
+            Alert.alert('Username Taken', 'That username is already taken. Please choose a different one.', [
+              { text: 'OK', onPress: () => setStep(1) },
+            ]);
             return;
           }
           throw updateError;
         }
 
-        if (existingUser.has_paid) {
-          setTimeout(async () => {
-            await checkUserFlow();
-            router.replace('/(tabs)/(home)');
-          }, 500);
-        } else if (!APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-          // Payment disabled - auto-approve user for testing
-          await supabase
-            .from('users')
-            .update({
-              has_paid: true,
-              payment_status: 'completed',
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingUser.id);
-          setTimeout(async () => {
-            await checkUserFlow();
-            router.replace('/(tabs)/(home)');
-          }, 500);
-        } else {
-          setTimeout(async () => {
-            await checkUserFlow();
-            router.replace('/payment-new');
-          }, 500);
-        }
-      } else {
-        // Check if email already exists in users table (from previous incomplete registration)
-        const { data: existingByEmail } = await supabase
+        navigateFn = () => navigateAfterSave(existingUser.has_paid, existingUser.id);
+        return;
+      }
+
+      // ── 2. Fallback: find by email ──
+      const { data: existingByEmail } = await supabase
+        .from('users')
+        .select('id, has_paid')
+        .eq('email', user.email)
+        .maybeSingle();
+
+      if (existingByEmail) {
+        const { error: updateError } = await supabase
           .from('users')
-          .select('id, has_paid, is_active')
-          .eq('email', user.email)
-          .maybeSingle();
+          .update(commonData)
+          .eq('id', existingByEmail.id);
 
-        if (existingByEmail) {
-          // Update existing user profile instead of inserting
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({ ...commonData })
-            .eq('id', existingByEmail.id);
-
-          if (updateError) {
-            if (updateError.code === '23505' && updateError.message?.includes('username')) {
-              Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
-              return;
-            }
-            throw updateError;
-          }
-
-          if (existingByEmail.has_paid) {
-            setTimeout(async () => {
-              await checkUserFlow();
-              router.replace('/(tabs)/(home)');
-            }, 500);
-          } else if (!APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-            // Payment disabled - auto-approve user for testing
-            await supabase
-              .from('users')
-              .update({
-                has_paid: true,
-                payment_status: 'completed',
-                is_active: true,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingByEmail.id);
-            setTimeout(async () => {
-              await checkUserFlow();
-              router.replace('/(tabs)/(home)');
-            }, 500);
-          } else {
-            setTimeout(async () => {
-              await checkUserFlow();
-              router.replace('/payment-new');
-            }, 500);
-          }
-          return;
-        }
-
-        // New user - insert into users table
-        const insertData = {
-          ...commonData,
-          is_active: true,
-          is_verified: false,
-          has_paid: !APP_CONFIG.FEATURES.REQUIRE_PAYMENT, // Auto-approve if payment disabled
-          payment_status: APP_CONFIG.FEATURES.REQUIRE_PAYMENT ? 'pending' : 'completed',
-          created_at: new Date().toISOString(),
-        };
-
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert(insertData);
-
-        if (insertError) {
-          console.log('Insert error details:', JSON.stringify(insertError));
-          if (insertError.code === '23505') {
-            // Default to email conflict for any unique constraint violation during insert
-            // (unless it's clearly a username conflict)
-            const isUsernameConflict = insertError.message?.includes('username') || 
-                                       insertError.message?.includes('users_username_key') ||
-                                       insertError.message?.includes('Username');
-            
-            if (isUsernameConflict) {
-              Alert.alert('Username Taken', 'The username you chose is already taken. Please choose a different one.', [{ text: 'OK', onPress: () => setStep(1) }]);
-              return;
-            }
-            
-            // For any other unique constraint (likely email), prompt to login
-            Alert.alert('Email Already Registered', 'An account with this email already exists. Please log in instead.', [{ text: 'OK', onPress: () => router.replace('/login') }]);
+        if (updateError) {
+          if (updateError.code === '23505' && updateError.message?.includes('username')) {
+            Alert.alert('Username Taken', 'That username is already taken. Please choose a different one.', [
+              { text: 'OK', onPress: () => setStep(1) },
+            ]);
             return;
           }
-          throw insertError;
+          throw updateError;
         }
 
-        setTimeout(async () => {
-          await checkUserFlow();
-          if (APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-            router.replace('/payment-new');
-          } else {
-            router.replace('/(tabs)/(home)');
-          }
-        }, 500);
+        navigateFn = () => navigateAfterSave(existingByEmail.has_paid, existingByEmail.id);
+        return;
       }
+
+      // ── 3. Insert new user ──
+      const insertData = {
+        ...commonData,
+        is_active: true,
+        is_verified: false,
+        has_paid: !APP_CONFIG.FEATURES.REQUIRE_PAYMENT,
+        payment_status: APP_CONFIG.FEATURES.REQUIRE_PAYMENT ? 'pending' : 'completed',
+        created_at: new Date().toISOString(),
+      };
+
+      const { data: inserted, error: insertError } = await supabase
+        .from('users')
+        .insert(insertData)
+        .select('id, has_paid')
+        .single();
+
+      if (insertError) {
+        if (insertError.code === '23505') {
+          const isUsernameConflict =
+            insertError.message?.includes('username') ||
+            insertError.message?.includes('users_username_key');
+          if (isUsernameConflict) {
+            Alert.alert('Username Taken', 'That username is already taken. Please choose a different one.', [
+              { text: 'OK', onPress: () => setStep(1) },
+            ]);
+            return;
+          }
+          Alert.alert('Email Already Registered', 'An account with this email already exists. Please log in instead.', [
+            { text: 'OK', onPress: () => router.replace('/login') },
+          ]);
+          return;
+        }
+        throw insertError;
+      }
+
+      navigateFn = () => navigateAfterSave(inserted?.has_paid ?? false, inserted?.id ?? '');
     } catch (error: any) {
       console.error('Registration error:', error);
-      Alert.alert('Registration Error', error?.message || 'Failed to create profile. Please try again.', [{ text: 'OK' }]);
+      Alert.alert('Registration Error', error?.message || 'Failed to create profile. Please try again.');
     } finally {
+      // Always stop the spinner first
       setLoading(false);
+      
+      if (navigateFn) {
+        // Small tick to let React flush the loading=false state before navigating
+        setTimeout(async () => {
+          try {
+            await navigateFn!();
+          } catch (navError) {
+            console.error('Navigation error after registration:', navError);
+            // Fallback navigation in case of error
+            router.replace('/(tabs)/(home)');
+          }
+        }, 100);
+      } else {
+        // If navigateFn is null, something went wrong - navigate to home as fallback
+        console.warn('No navigateFn set - possible issue in registration flow');
+        setTimeout(() => {
+          router.replace('/(tabs)/(home)');
+        }, 100);
+      }
     }
   };
 
@@ -555,7 +619,7 @@ export default function RegistrationScreen() {
       '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
       'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
       'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
-      'b408535ae-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'), // Fixed typo
+      'b408535ae-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
       'av1.jpg': require('../assets/av1.jpg'),
       'av2.jpg': require('../assets/av2.jpg'),
       'av3.jpg': require('../assets/av3.jpg'),
@@ -569,20 +633,11 @@ export default function RegistrationScreen() {
     return avatarMap[filename] || null;
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      const formatted = formatDateToString(selectedDate);
-      updateFormData('dateOfBirth', formatted);
-    }
-  };
-
-  // ✅ renderStep1, renderStep2, renderStep3 remain mostly the same
-  // (no changes needed for UI logic)
+  // ─── STEP RENDERERS ──────────────────────────────────────────────────────────
 
   const renderStep1 = () => (
     <View style={styles.stepContainer}>
-      {formData.avatar && (
+      {formData.avatar ? (
         <View style={styles.avatarPreview}>
           <Text style={[styles.label, { fontSize: textFontSize }]}>Your Selected Avatar</Text>
           <View style={[styles.avatarPreviewContainer, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
@@ -593,7 +648,14 @@ export default function RegistrationScreen() {
             />
           </View>
         </View>
-      )}
+      ) : null}
+
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>
+        1. Age & Identity
+      </Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>
+        Fill in your personal details. You must be 25 or older.
+      </Text>
 
       <TextInput
         style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
@@ -609,31 +671,104 @@ export default function RegistrationScreen() {
         placeholderTextColor={colors.textSecondary}
         value={formData.username}
         onChangeText={(text) => updateFormData('username', text)}
+        autoCapitalize="none"
       />
 
-      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>1. Age & Identity</Text>
-      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Select your date of birth (must be 25 or older).</Text>
+      {/* Date of Birth — web uses native <input type="date"> with real-time validation */}
+      {isWebPlatform ? (
+        <View style={{ marginBottom: 16 }}>
+          <Text style={[styles.label, { fontSize: textFontSize, marginBottom: 6 }]}>
+            Date of Birth
+          </Text>
+          {/* @ts-ignore – 'input' is valid on web */}
+          <input
+            type="date"
+            value={
+              // Convert stored dd/mm/yyyy → yyyy-MM-dd for the HTML input
+              formData.dateOfBirth
+                ? (() => {
+                    const parts = formData.dateOfBirth.split('/');
+                    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                    return '';
+                  })()
+                : ''
+            }
+            min="1900-01-01"
+            max={(() => {
+              const d = new Date();
+              d.setFullYear(d.getFullYear() - 25);
+              return d.toISOString().split('T')[0];
+            })()}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const val = e.target.value; // yyyy-MM-dd
+              if (!val) {
+                setDateError('Please enter your date of birth.');
+                updateFormData('dateOfBirth', '');
+                return;
+              }
+              const [y, m, d] = val.split('-');
+              const formatted = `${d}/${m}/${y}`;
+              updateFormData('dateOfBirth', formatted);
+              
+              // Validate immediately for web
+              const validation = validateDateOfBirth(formatted);
+              if (!validation.valid) {
+                setDateError(validation.error || 'Invalid date');
+              } else {
+                setDateError(null);
+              }
+            }}
+            style={{
+              width: '100%',
+              backgroundColor: colors.card,
+              border: `1px solid ${dateError ? '#e53e3e' : colors.border}`,
+              borderRadius: 8,
+              padding: '14px 16px',
+              fontSize: inputFontSize,
+              color: colors.text,
+              boxSizing: 'border-box',
+              outline: 'none',
+              cursor: 'pointer',
+            } as any}
+          />
+          {/* Error message display for web */}
+          {dateError && (
+            <Text style={{ color: '#e53e3e', fontSize: 13, marginTop: 6 }}>
+              {dateError}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <>
+          <View style={{ position: 'relative', marginBottom: 16 }}>
+            <TextInput
+              style={[
+                styles.input,
+                { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal, marginBottom: 0 },
+              ]}
+              placeholder="Select date of birth"
+              placeholderTextColor={colors.textSecondary}
+              value={formData.dateOfBirth}
+              editable={false}
+              pointerEvents="none"
+            />
+            <Pressable
+              onPress={() => setShowDatePicker(true)}
+              style={StyleSheet.absoluteFill}
+            />
+          </View>
 
-      <Pressable onPress={() => setShowDatePicker(true)}>
-        <TextInput
-          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-          placeholder="Select date of birth"
-          placeholderTextColor={colors.textSecondary}
-          value={formData.dateOfBirth}
-          editable={false}
-          pointerEvents="none"
-        />
-      </Pressable>
-
-      {showDatePicker && (
-        <DateTimePicker
-          value={parseDateOfBirth(formData.dateOfBirth) || new Date()}
-          mode="date"
-          display="default"
-          minimumDate={new Date(1900, 0, 1)}
-          maximumDate={new Date(2000, 11, 30)}
-          onChange={handleDateChange}
-        />
+          {showDatePicker && DateTimePicker && (
+            <DateTimePicker
+              value={parseDateOfBirth(formData.dateOfBirth) || new Date(1990, 0, 1)}
+              mode="date"
+              display="default"
+              minimumDate={new Date(1900, 0, 1)}
+              maximumDate={new Date(new Date().getFullYear() - 25, new Date().getMonth(), new Date().getDate())}
+              onChange={handleDateChange}
+            />
+          )}
+        </>
       )}
 
       <DropdownPicker
@@ -662,7 +797,11 @@ export default function RegistrationScreen() {
         label="Country of Residence"
         value={formData.countryOfResidence}
         options={COUNTRIES}
-        onSelect={(value) => updateFormData('countryOfResidence', value)}
+        onSelect={(value) => {
+          updateFormData('countryOfResidence', value);
+          updateFormData('city', '');
+          updateFormData('county', '');
+        }}
       />
 
       {formData.countryOfResidence === 'Kenya' ? (
@@ -685,14 +824,14 @@ export default function RegistrationScreen() {
       <DropdownPicker
         label="Marital Status"
         value={formData.maritalStatus}
-        options={["Single", "Divorced", "Widowed"]}
+        options={['Single', 'Divorced', 'Widowed']}
         onSelect={(value) => updateFormData('maritalStatus', value)}
       />
 
       <DropdownPicker
         label="Do you have kids?"
         value={formData.hasKids}
-        options={["Yes", "No"]}
+        options={['Yes', 'No']}
         onSelect={(value) => updateFormData('hasKids', value)}
       />
 
@@ -711,85 +850,76 @@ export default function RegistrationScreen() {
 
   const renderStep2 = () => (
     <View style={styles.stepContainer}>
-      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>2. Health, Faith & Family</Text>
-      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Answer all questions</Text>
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>
+        2. Health, Faith & Family
+      </Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>
+        Answer all questions honestly.
+      </Text>
 
       <DropdownPicker
         label="HIV Status"
         value={formData.hivStatus}
-        options={["Positive", "Negative"]}
+        options={['Negative', 'Positive', 'Prefer not to say']}
         onSelect={(value) => updateFormData('hivStatus', value)}
       />
 
       <DropdownPicker
-        label="Religion & Level of Faith"
+        label="Religion"
         value={formData.religion}
-        options={[
-          'Christian – Very religious',
-          'Christian – Moderately religious',
-          'Christian – Not religious',
-          'Muslim – Very religious',
-          'Muslim – Moderately religious',
-          'Muslim – Not religious',
-          'Hindu – Very religious',
-          'Hindu – Moderately religious',
-          'Hindu – Not religious',
-          'Traditional / Spiritual – Very spiritual',
-          'Traditional / Spiritual – Moderately spiritual',
-          'Traditional / Spiritual – Not spiritual',
-          'Atheist – Not religious',
-          'Other – Please specify',
-        ]}
+        options={['Christian', 'Muslim', 'Hindu', 'Buddhist', 'Jewish', 'Atheist', 'Agnostic', 'Other']}
         onSelect={(value) => updateFormData('religion', value)}
       />
 
       <DropdownPicker
         label="Do you believe in marriage?"
         value={formData.believeInMarriage}
-        options={["Yes I believe in marriage", "No I don't believe in marriage", "Not sure yet"]}
+        options={['Yes', 'No', 'Maybe']}
         onSelect={(value) => updateFormData('believeInMarriage', value)}
       />
 
       <DropdownPicker
-        label="Do you hope to have kids in the future?"
+        label="Do you want kids in the future?"
         value={formData.wantKidsInFuture}
-        options={["Yes", "No", "Maybe / Not sure"]}
+        options={['Yes', 'No', 'Maybe']}
         onSelect={(value) => updateFormData('wantKidsInFuture', value)}
       />
 
       <DropdownPicker
-        label="Do you have any physical disability?"
+        label="Do you have a physical disability?"
         value={formData.hasPhysicalDisability}
-        options={["Yes", "No"]}
+        options={['Yes', 'No']}
         onSelect={(value) => updateFormData('hasPhysicalDisability', value)}
       />
 
       {formData.hasPhysicalDisability === 'Yes' && (
         <TextInput
-          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-          placeholder="Please explain your physical disability"
+          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="Please describe your physical disability"
           placeholderTextColor={colors.textSecondary}
           value={formData.physicalDisabilityDetails}
           onChangeText={(text) => updateFormData('physicalDisabilityDetails', text)}
           multiline
+          numberOfLines={3}
         />
       )}
 
       <DropdownPicker
-        label="Do you suffer from any critical illness?"
+        label="Do you have a critical illness?"
         value={formData.hasCriticalIllness}
-        options={["Yes", "No"]}
+        options={['Yes', 'No']}
         onSelect={(value) => updateFormData('hasCriticalIllness', value)}
       />
 
       {formData.hasCriticalIllness === 'Yes' && (
         <TextInput
-          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-          placeholder="Please explain your critical illness"
+          style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+          placeholder="Please describe your critical illness"
           placeholderTextColor={colors.textSecondary}
           value={formData.criticalIllnessDetails}
           onChangeText={(text) => updateFormData('criticalIllnessDetails', text)}
           multiline
+          numberOfLines={3}
         />
       )}
     </View>
@@ -797,60 +927,71 @@ export default function RegistrationScreen() {
 
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
-      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>About You</Text>
-      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>Be honest — tell people who you are</Text>
+      <Text style={[styles.stepTitle, { fontSize: titleFontSize, marginBottom: stepMarginBottom }]}>
+        3. About You & Your Partner
+      </Text>
+      <Text style={[styles.stepDescription, { fontSize: textFontSize, marginBottom: descriptionMarginBottom }]}>
+        Help others get to know you.
+      </Text>
 
-      <Text style={[styles.label, { fontSize: textFontSize }]}>1. Introduce yourself</Text>
+      <Text style={[styles.label, { fontSize: textFontSize }]}>Introduce yourself</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-        placeholder="Include current realities, children, strengths, imperfections..."
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Tell people about yourself..."
         placeholderTextColor={colors.textSecondary}
         value={formData.introduceYourself}
         onChangeText={(text) => updateFormData('introduceYourself', text)}
         multiline
+        numberOfLines={4}
       />
 
-      <Text style={[styles.label, { fontSize: textFontSize }]}>2. Describe your appearance</Text>
+      <Text style={[styles.label, { fontSize: textFontSize }]}>Describe your appearance</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-        placeholder="Complexion, height, weight, body type, hairstyle, tattoos, disabilities..."
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Describe your physical appearance..."
         placeholderTextColor={colors.textSecondary}
         value={formData.describeAppearance}
         onChangeText={(text) => updateFormData('describeAppearance', text)}
         multiline
+        numberOfLines={4}
       />
 
-      <Text style={[styles.label, { fontSize: textFontSize }]}>3. What are you looking for (appearance & qualities)</Text>
+      <Text style={[styles.label, { fontSize: textFontSize }]}>Looking for (appearance & qualities)</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-        placeholder="What kind of partner are you hoping to meet? What would they get from you?"
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Describe what you're looking for in a partner..."
         placeholderTextColor={colors.textSecondary}
         value={formData.lookingForAppearance}
         onChangeText={(text) => updateFormData('lookingForAppearance', text)}
         multiline
+        numberOfLines={4}
       />
 
-      <Text style={[styles.label, { fontSize: textFontSize }]}>4. As your partner, what should you expect from me?</Text>
+      <Text style={[styles.label, { fontSize: textFontSize }]}>Partner expectations</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-        placeholder="What can your partner expect from you in a relationship?"
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="What are your expectations of a partner?"
         placeholderTextColor={colors.textSecondary}
         value={formData.partnerExpectations}
         onChangeText={(text) => updateFormData('partnerExpectations', text)}
         multiline
+        numberOfLines={4}
       />
 
-      <Text style={[styles.label, { fontSize: textFontSize }]}>5. Do not contact me if</Text>
+      <Text style={[styles.label, { fontSize: textFontSize }]}>Do not contact me if</Text>
       <TextInput
-        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
-        placeholder="List boundaries / dealbreakers"
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Describe who should NOT contact you..."
         placeholderTextColor={colors.textSecondary}
         value={formData.doNotContactMeIf}
         onChangeText={(text) => updateFormData('doNotContactMeIf', text)}
         multiline
+        numberOfLines={4}
       />
     </View>
   );
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={commonStyles.safeArea}>
@@ -858,43 +999,54 @@ export default function RegistrationScreen() {
         {authLoading ? (
           <View style={commonStyles.centerContent}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[commonStyles.text, { marginTop: 16 }]}>
-              Verifying authentication...
-            </Text>
+            <Text style={[commonStyles.text, { marginTop: 16 }]}>Verifying authentication...</Text>
           </View>
         ) : (
           <>
+            {/* Header */}
             <View style={styles.header}>
               <Pressable onPress={handleBack}>
                 <IconSymbol name="chevron.left" size={24} color={colors.text} />
               </Pressable>
               <Text style={styles.headerTitle}>Registration</Text>
-              <Text style={styles.stepIndicator}>
-                {step}/{totalSteps}
-              </Text>
+              <Text style={styles.stepIndicator}>{step}/{totalSteps}</Text>
             </View>
 
+            {/* Progress bar */}
             <View style={styles.progressContainer}>
-              <View style={[styles.progressBar, { width: `${(step / totalSteps) * 100}%` }]} />
+              <View style={[styles.progressBar, { width: `${(step / totalSteps) * 100}%` as any }]} />
             </View>
 
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}>
-              <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { padding: contentPadding }]} keyboardShouldPersistTaps="handled">
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+            >
+              <ScrollView
+                style={styles.scrollView}
+                contentContainerStyle={[styles.scrollContent, { padding: contentPadding }]}
+                keyboardShouldPersistTaps="handled"
+              >
                 {step === 1 && renderStep1()}
                 {step === 2 && renderStep2()}
                 {step === 3 && renderStep3()}
               </ScrollView>
             </KeyboardAvoidingView>
 
+            {/* Bottom button */}
             <View style={styles.buttonContainer}>
               <Pressable
                 style={[styles.nextButton, loading && styles.buttonDisabled]}
                 onPress={handleNext}
                 disabled={loading}
               >
-                <Text style={styles.nextButtonText}>
-                  {loading ? 'Submitting...' : step === totalSteps ? 'Complete Registration' : 'Next'}
-                </Text>
+                {loading ? (
+                  <ActivityIndicator color={colors.card} />
+                ) : (
+                  <Text style={styles.nextButtonText}>
+                    {step === totalSteps ? 'Complete Registration' : 'Next'}
+                  </Text>
+                )}
               </Pressable>
             </View>
           </>
@@ -904,7 +1056,8 @@ export default function RegistrationScreen() {
   );
 }
 
-// ... styles remain unchanged ...
+// ─── STYLES ──────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

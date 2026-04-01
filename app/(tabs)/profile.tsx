@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking, useWindowDimensions } from "react-native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, router } from "expo-router";
 import { IconSymbol } from "../../components/IconSymbol";
-import { colors, commonStyles } from "../../styles/commonStyles";
+import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../../styles/commonStyles";
 import { supabase } from "../integrations/supabase/client";
 import PhotoRequestManager from "../../components/PhotoRequestManager";
 
@@ -136,32 +137,52 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase.auth.signOut();
-              if (error) throw error;
-
-              console.log('User logged out successfully');
-              router.replace('/login');
-            } catch (error) {
-              console.error('Logout error:', error);
-              Alert.alert('Error', 'Failed to logout. Please try again.');
-            }
+    // On web, use browser confirm instead of Alert.alert for better UX
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm('Are you sure you want to logout?');
+      if (!confirmed) return;
+      await performLogout();
+    } else {
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
           },
-        },
-      ]
-    );
+          {
+            text: 'Logout',
+            style: 'destructive',
+            onPress: performLogout,
+          },
+        ]
+      );
+    }
+  };
+
+  const performLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      console.log('User logged out successfully');
+      // Clear any cached data
+      try {
+        await AsyncStorage.clear();
+      } catch (clearError) {
+        console.warn('Failed to clear AsyncStorage:', clearError);
+      }
+      // Use replace instead of push for logout
+      router.replace('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        alert('Failed to logout. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to logout. Please try again.');
+      }
+    }
   };
 
   const handleOnlineStatusToggle = async (value: boolean) => {
@@ -415,10 +436,26 @@ export default function ProfileScreen() {
               <Text style={styles.detailValue}>{userProfile.nationality}</Text>
             </View>
           )}
+          {userProfile.country_of_residence && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Country of Residence</Text>
+              <Text style={styles.detailValue}>{userProfile.country_of_residence}</Text>
+            </View>
+          )}
           {userProfile.marital_status && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Marital Status</Text>
               <Text style={styles.detailValue}>{userProfile.marital_status}</Text>
+            </View>
+          )}
+          {userProfile.number_of_children !== null && userProfile.number_of_children !== undefined && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Have Kids</Text>
+              <Text style={styles.detailValue}>
+                {userProfile.number_of_children > 0 
+                  ? `Yes, ${userProfile.number_of_children} kid${userProfile.number_of_children === 1 ? '' : 's'}` 
+                  : 'No'}
+              </Text>
             </View>
           )}
         </View>
@@ -436,6 +473,18 @@ export default function ProfileScreen() {
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Religion & Faith Level</Text>
               <Text style={styles.detailValue}>{userProfile.religion}</Text>
+            </View>
+          )}
+          {userProfile.has_physical_disability === true && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Physical Disability</Text>
+              <Text style={styles.detailValue}>{userProfile.physical_disability_details || 'Yes'}</Text>
+            </View>
+          )}
+          {userProfile.has_critical_illness === true && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Critical Illness</Text>
+              <Text style={styles.detailValue}>{userProfile.critical_illness_details || 'Yes'}</Text>
             </View>
           )}
         </View>
