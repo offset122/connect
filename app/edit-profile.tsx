@@ -39,7 +39,6 @@ type UserProfile = {
   avatar: string | null;
   profile_images: string[];
   profile_picture: string | null;
-  phone_number?: string | null;
 };
 
 export default function EditProfileScreen() {
@@ -65,20 +64,20 @@ export default function EditProfileScreen() {
    // Import the avatar image from assets
    const avatarMap: { [key: string]: any } = {
      '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
-      '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
-      '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
-      'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
-      'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
-      'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
-      'av1.jpg': require('../assets/av1.jpg'),
-      'av2.jpg': require('../assets/av2.jpg'),
-      'av3.jpg': require('../assets/av3.jpg'),
-      'av4.jpg': require('../assets/av4.jpg'),
-      'av5.jpg': require('../assets/av5.jpg'),
-      'av6.jpg': require('../assets/av6.jpg'),
-      'men1.jpg': require('../assets/men1.jpg'),
-    'men2.jpg': require('../assets/men2.jpg'),
-    'men3.jpg': require('../assets/men3.jpg'),
+     '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
+     '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
+     'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
+     'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
+     'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
+     'av1.jpg': require('../assets/av1.jpg'),
+     'av2.jpg': require('../assets/av2.jpg'),
+     'av3.jpg': require('../assets/av3.jpg'),
+     'av4.jpg': require('../assets/av4.jpg'),
+     'av5.jpg': require('../assets/av5.jpg'),
+     'av6.jpg': require('../assets/av6.jpg'),
+     'men1.jpg': require('../assets/men1.jpg'),
+     'men2.jpg': require('../assets/men2.jpg'),
+     'men3.jpg': require('../assets/men3.jpg'),
    };
    return avatarMap[filename] || null;
  };
@@ -98,7 +97,6 @@ export default function EditProfileScreen() {
     teeth_state: '',
     height_ft: '',
     height_in: '',
-    phone_number: '',
     avatar: '',
     // About You fields from registration (read-only)
     introduce_yourself: '',
@@ -153,7 +151,6 @@ export default function EditProfileScreen() {
           avatar,
           profile_images,
           profile_picture,
-          phone_number,
           introduce_yourself,
           describe_appearance,
           looking_for_appearance,
@@ -184,7 +181,6 @@ export default function EditProfileScreen() {
             avatar,
             profile_images,
             profile_picture,
-            phone_number,
             introduce_yourself,
             describe_appearance,
             looking_for_appearance,
@@ -226,7 +222,6 @@ export default function EditProfileScreen() {
         teeth_state: data.teeth_state || '',
         height_ft: data.height_ft?.toString() || '',
         height_in: data.height_in?.toString() || '',
-        phone_number: data.phone_number || '',
         avatar: data.avatar || '',
         introduce_yourself: data.introduce_yourself || '',
         describe_appearance: data.describe_appearance || '',
@@ -561,23 +556,6 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.fullWidthContainer}>
-            <Text style={styles.inputLabel}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.phone_number}
-              onChangeText={(value) => handleInputChange('phone_number', value)}
-              placeholder="Enter phone number"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="phone-pad"
-            />
-          </View>
-        </View>
-
-        {/* Professional Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Professional Information</Text>
-          
           <View style={styles.fullWidthContainer}>
             <Text style={styles.inputLabel}>Current Profession</Text>
             <TextInput

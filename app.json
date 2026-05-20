@@ -2,8 +2,8 @@
   "expo": {
     "name": "Hannas Connect",
     "slug": "hannasconnect",
-    "version": "2.0.0",
-    "runtimeVersion": "2.0.0",
+    "version": "3.0.0",
+    "runtimeVersion": "3.0.0",
     "orientation": "portrait",
     "scheme": "hannasconnect",
     "icon": "./assets/images/logoh.jpg",
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "com.hannas.connect",
-      "versionCode": 97,
+      "versionCode": 98,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logoh.jpg",
         "backgroundColor": "#000000"

@@ -237,7 +237,7 @@ export default function RegistrationScreen() {
 
   const validateStep = (stepNumber: number): boolean => {
     const baseRequiredFields: { [key: number]: (keyof RegistrationFormData)[] } = {
-      1: ['avatar', 'name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids', 'heightFeet', 'complexion', 'bodyShape'],
+      1: ['name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids', 'heightFeet', 'complexion', 'bodyShape'],
       2: ['hivStatus', 'religion', 'believeInMarriage', 'wantKidsInFuture', 'hasPhysicalDisability', 'hasCriticalIllness'],
       3: ['introduceYourself', 'describeAppearance', 'lookingForAppearance', 'partnerExpectations', 'doNotContactMeIf'],
     };
