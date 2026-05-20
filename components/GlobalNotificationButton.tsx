@@ -18,6 +18,7 @@ const HIDDEN_SCREENS = new Set([
   '/reset-password',
   '/email-confirmation',
   '/payment-new',
+  '/connections',
 ]);
 
 export default function GlobalNotificationButton() {
@@ -44,15 +45,12 @@ export default function GlobalNotificationButton() {
         hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
       >
         <View style={styles.iconWrapper}>
-          <IconSymbol name="bell.fill" size={26} color="#FFFFFF" />
-
-          {unreadCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </Text>
-            </View>
-          )}
+          <IconSymbol name="bell.fill" size={22} color="#FFFFFF" />
+          <View style={[styles.badge, unreadCount === 0 && styles.badgeZero]}>
+            <Text style={styles.badgeText}>
+              {unreadCount > 20 ? '20+' : unreadCount}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     </View>
@@ -87,28 +85,35 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -10,
+    top: -8,
     right: -10,
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#FF3B30',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#FFFFFF',
     zIndex: 10,
+    paddingHorizontal: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 4,
     elevation: 8,
   },
+  badgeZero: {
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.6)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   badgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     color: '#FFFFFF',
     textAlign: 'center',
-    lineHeight: 13,
+    lineHeight: 12,
   },
 });

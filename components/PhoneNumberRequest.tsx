@@ -169,8 +169,12 @@ export default function PhoneNumberRequest({
       if (incoming) {
         setUserRole('target');
         setRequestStatus(incoming.request_status);
+        // Only show the share form if approved but NOT yet shared
         if (incoming.request_status === 'approved') {
           setHasApproved(true);
+        } else {
+          // 'shared', 'declined', 'pending' — never show the input form
+          setHasApproved(false);
         }
         console.log('checkRequestStatus: incoming row found', incoming.request_status);
         return;
@@ -475,6 +479,13 @@ export default function PhoneNumberRequest({
 
       if (messageError) throw messageError;
 
+      // Mark the request as 'shared' so the form never shows again
+      await (supabase as any)
+        .from('phone_number_requests')
+        .update({ request_status: 'shared' })
+        .eq('requester_id', targetUserId)
+        .eq('target_user_id', user.id);
+
       // Get current user name safely
       let currentUserName = 'Someone';
       try {
@@ -501,13 +512,13 @@ export default function PhoneNumberRequest({
         });
       } catch (notificationError) {
         console.warn('Notification failed, but phone number was sent successfully:', notificationError);
-        // Continue execution - notification failure should not break the main flow
       }
 
-      setRequestStatus('approved');
+      // Update local state so the form disappears immediately
+      setRequestStatus('shared' as any);
+      setHasApproved(false);
       setPhoneNumber('');
       showAlert('Sent! 📞', 'Your phone number has been sent securely in your private chat.');
-      // Do NOT auto-navigate away - user wants to stay on the current screen
     } catch (error: any) {
       console.error('Error sharing phone number:', error);
       showAlert('Error', 'Failed to send phone number. Please try again.');
@@ -558,7 +569,17 @@ export default function PhoneNumberRequest({
     );
   }
 
-  // Target: share phone number UI
+  // Target: already shared — show confirmation, no form
+  if (userRole === 'target' && (requestStatus as string) === 'shared') {
+    return (
+      <View style={styles.sharedContainer}>
+        <IconSymbol name="checkmark.circle.fill" size={18} color="#34C759" />
+        <Text style={styles.sharedText}>Phone number shared</Text>
+      </View>
+    );
+  }
+
+  // Target: share phone number UI (approved but not yet shared)
   if (userRole === 'target' && hasApproved) {
     return (
       <View style={styles.inputContainer}>
@@ -649,6 +670,23 @@ export default function PhoneNumberRequest({
 }
 
 const styles = StyleSheet.create({
+  sharedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#E3FAF0',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#34C75940',
+  },
+  sharedText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#34C759',
+    fontFamily: fontFamilies.semibold,
+  },
   requestButton: {
     backgroundColor: colors.background,
     borderWidth: 2,
