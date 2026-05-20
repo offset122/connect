@@ -44,6 +44,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  fullScroll: {
+    flex: 1,
+  },
+  fullScrollContent: {
+    flexGrow: 1,
+  },
   header: {
     padding: 20,
     backgroundColor: colors.primary,
@@ -114,15 +120,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  filterGridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 20,
+  },
   filterContainer: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 20,
   },
   filterButton: {
+    flex: 1,
+    minWidth: '45%',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,
@@ -393,11 +407,27 @@ export default function AdminDashboardScreen() {
       return;
     }
 
-    const { data: userData } = await (supabase as any)
+    // Try both auth_id (new schema) and id (old schema)
+    let userData: any = null;
+    
+    // First try with auth_id (correct newer schema)
+    const { data: authIdData, error: authIdError } = await (supabase as any)
       .from('users')
       .select('is_admin')
-      .eq('id', user.id)
-      .single();
+      .eq('auth_id', user.id)
+      .maybeSingle();
+
+    if (authIdData) {
+      userData = authIdData;
+    } else {
+      // Fallback to id for older accounts
+      const { data: idData } = await (supabase as any)
+        .from('users')
+        .select('is_admin')
+        .eq('id', user.id)
+        .maybeSingle();
+      userData = idData;
+    }
 
     if (!userData?.is_admin) {
       Alert.alert('Access Denied', 'You do not have admin privileges');
@@ -467,7 +497,7 @@ const fetchUsers = async () => {
   try {
     const { data, error } = await (supabase as any)
       .from('users')
-      .select('id, email, username, first_name, is_active, is_admin, is_verified, has_paid, payment_date, created_at, account_expiry')
+      .select('id, email, username, first_name, is_active, is_admin, is_verified, has_paid, payment_date, created_at, account_expiry, subscription_plan, subscription_expires_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -595,38 +625,114 @@ const formatDateTime = (dateString: string | null) => {
   router.push(`/admin/user/${userId}`);
 };
 
+  const calculateDaysRemaining = (expiryDate: string | null, createdAt: string | null, paymentDate: string | null, hasPaid: boolean, isAdmin: boolean, subscriptionPlan?: string | null): number | string => {
+    // Admin accounts never expire
+    if (isAdmin) return 'Never';
+    
+    // Unlimited plan accounts never expire
+    if (subscriptionPlan === 'unlimited') return 'Never';
+    
+    if (!expiryDate) {
+      if (!hasPaid) return 'N/A';
+      
+      // Calculate 30 days from payment date, if no payment date use join date
+      const startDate = paymentDate ? new Date(paymentDate) : (createdAt ? new Date(createdAt) : new Date());
+      const defaultExpiry = new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const diffTime = defaultExpiry.getTime() - new Date().getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays < 0) return 'Expired';
+      return diffDays;
+    }
+    
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'Expired';
+    return diffDays;
+  };
+
 const renewAccount = async (userId: string, userEmail: string) => {
-  Alert.alert(
-    'Renew Account',
-    `Renew account for ${userEmail}? This will mark them as paid and active for now.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Renew',
-        onPress: async () => {
-          try {
-            const { error } = await (supabase as any)
-              .from('users')
-              .update({
-                has_paid: true,
-                payment_status: 'completed',
-                is_active: true,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userId);
+  if (typeof document !== 'undefined') {
+    // Web environment
+    const planChoice = window.prompt('Renew account for ' + userEmail + ':\n\nEnter duration in days:\n30 = 1 Month Plan\n90 = 3 Month Plan\n\nType 30 or 90:', '30');
+    
+    if (planChoice === null) return;
+    
+    let days = parseInt(planChoice.trim());
+    if (![30, 90].includes(days)) {
+      alert('Invalid selection. Please enter either 30 or 90');
+      return;
+    }
+    
+    const planName = days === 30 ? '1 Month' : '3 Months';
+    
+    if (!window.confirm(`Renew ${userEmail} for ${planName} (${days} days)?`)) {
+      return;
+    }
+    
+    try {
+      const now = new Date();
+      const expiryDate = new Date(now);
+      expiryDate.setDate(expiryDate.getDate() + days);
+      
+      const { error } = await (supabase as any)
+        .from('users')
+        .update({
+          has_paid: true,
+          payment_status: 'completed',
+          is_active: true,
+          subscription_plan: days === 30 ? '180' : '365',
+          subscription_activated_at: now.toISOString(),
+          subscription_expires_at: expiryDate.toISOString(),
+          updated_at: now.toISOString()
+        })
+        .eq('id', userId);
 
-            if (error) throw error;
+      if (error) throw error;
 
-            Alert.alert('Success', 'Account renewed successfully');
-            fetchUsers();
-          } catch (error: any) {
-            console.error('Error renewing account:', error);
-            Alert.alert('Error', 'Failed to renew account: ' + error.message);
-          }
+      window.alert('Success: Account renewed successfully');
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error renewing account:', error);
+      window.alert('Error: Failed to renew account: ' + error.message);
+    }
+  } else {
+    // Native environment
+    Alert.alert(
+      'Renew Account',
+      `Renew account for ${userEmail}? This will mark them as paid and active for now.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Renew',
+          onPress: async () => {
+            try {
+              const { error } = await (supabase as any)
+                .from('users')
+                .update({
+                  has_paid: true,
+                  payment_status: 'completed',
+                  is_active: true,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', userId);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'Account renewed successfully');
+              fetchUsers();
+            } catch (error: any) {
+              console.error('Error renewing account:', error);
+              Alert.alert('Error', 'Failed to renew account: ' + error.message);
+            }
+          },
         },
-      },
-    ]
-  );
+      ]
+    );
+  }
 };
 
 const deleteAccount = async (userId: string, userEmail: string) => {
@@ -642,117 +748,88 @@ const deleteAccount = async (userId: string, userEmail: string) => {
 
     // Prevent deleting admin accounts
     if (userData?.is_admin) {
-      Alert.alert(
-        'Cannot Delete',
-        'Admin accounts cannot be deleted. Please demote the user first if you need to remove admin privileges.'
-      );
+      if (typeof document !== 'undefined') {
+        window.alert('Admin accounts cannot be deleted. Please demote the user first if you need to remove admin privileges.');
+      } else {
+        Alert.alert(
+          'Cannot Delete',
+          'Admin accounts cannot be deleted. Please demote the user first if you need to remove admin privileges.'
+        );
+      }
       return;
     }
 
-    Alert.alert(
-      'Delete Account',
-      `Are you sure you want to delete ${userEmail}'s account? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await (supabase as any)
-                .from('users')
-                .delete()
-                .eq('id', userId);
+    if (typeof document !== 'undefined') {
+      // Web environment
+      if (!window.confirm(`Are you sure you want to delete ${userEmail}'s account? This action cannot be undone.`)) {
+        return;
+      }
+      
+      try {
+        const { error } = await (supabase as any)
+          .from('users')
+          .delete()
+          .eq('id', userId);
 
-              if (error) throw error;
+        if (error) throw error;
 
-              Alert.alert('Success', 'Account deleted successfully');
-              fetchUsers();
-            } catch (error: any) {
-              console.error('Error deleting account:', error);
-              Alert.alert('Error', 'Failed to delete account');
-            }
+        window.alert('Success: Account deleted successfully');
+        fetchUsers();
+      } catch (error: any) {
+        console.error('Error deleting account:', error);
+        window.alert('Error: Failed to delete account');
+      }
+    } else {
+      // Native environment
+      Alert.alert(
+        'Delete Account',
+        `Are you sure you want to delete ${userEmail}'s account? This action cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const { error } = await (supabase as any)
+                  .from('users')
+                  .delete()
+                  .eq('id', userId);
+
+                if (error) throw error;
+
+                Alert.alert('Success', 'Account deleted successfully');
+                fetchUsers();
+              } catch (error: any) {
+                console.error('Error deleting account:', error);
+                Alert.alert('Error', 'Failed to delete account');
+              }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   } catch (error: any) {
     console.error('Error checking user admin status:', error);
-    Alert.alert('Error', 'Failed to verify user status');
+    if (typeof document !== 'undefined') {
+      window.alert('Error: Failed to verify user status');
+    } else {
+      Alert.alert('Error', 'Failed to verify user status');
+    }
   }
 };
 
 const editAccount = async (userId: string, userEmail: string) => {
-  console.log('Admin Dashboard: Starting edit account for userId:', userId, 'email:', userEmail);
-
-  // Simple sequential editing for key fields
-  const editEmail = async () => {
-    return new Promise<string>((resolve) => {
-      Alert.prompt(
-        'Edit Email',
-        `Current email: ${userEmail}`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
-          {
-            text: 'Next',
-            onPress: (value: string | undefined) => resolve(value || '')
-          },
-        ],
-        'plain-text',
-        userEmail
-      );
-    });
-  };
-
-  const editUsername = async () => {
-    return new Promise<string>((resolve) => {
-      Alert.prompt(
-        'Edit Username',
-        'Enter new username (leave empty to keep current):',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
-          {
-            text: 'Next',
-            onPress: (value: string | undefined) => resolve(value || '')
-          },
-        ],
-        'plain-text'
-      );
-    });
-  };
-
-  const editFirstName = async () => {
-    return new Promise<string>((resolve) => {
-      Alert.prompt(
-        'Edit Full Name',
-        'Enter new first name (leave empty to keep current):',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve('') },
-          {
-            text: 'Save',
-            onPress: (value: string | undefined) => resolve(value || '')
-          },
-        ],
-        'plain-text'
-      );
-    });
-  };
-
-  try {
-    // Edit email
-    const newEmail = await editEmail();
-    console.log('Admin Dashboard: Email edit result:', newEmail);
-    if (newEmail === '') return; // Cancelled
-
-    // Edit username
-    const newUsername = await editUsername();
-    console.log('Admin Dashboard: Username edit result:', newUsername);
-    if (newUsername === '') return; // Cancelled
-
-    // Edit first name
-    const newFirstName = await editFirstName();
-    console.log('Admin Dashboard: First name edit result:', newFirstName);
-    if (newFirstName === '') return; // Cancelled
+  if (typeof document !== 'undefined') {
+    // Web environment - use native browser prompt
+    const newEmail = window.prompt('Edit Email', userEmail);
+    if (newEmail === null) return;
+    
+    const newUsername = window.prompt('Edit Username (leave empty to keep current)');
+    if (newUsername === null) return;
+    
+    const newFirstName = window.prompt('Edit First Name (leave empty to keep current)');
+    if (newFirstName === null) return;
 
     // Prepare update data
     const updateData: any = { updated_at: new Date().toISOString() };
@@ -769,76 +846,103 @@ const editAccount = async (userId: string, userEmail: string) => {
       updateData.first_name = newFirstName.trim();
     }
 
-    console.log('Admin Dashboard: Prepared update data:', updateData);
-
-    // Check if there's anything to update
     if (Object.keys(updateData).length === 1) { // Only updated_at
-      Alert.alert('No Changes', 'No changes were made to the account.');
+      alert('No changes were made to the account.');
       return;
     }
 
-    console.log('Admin Dashboard: Updating user with data:', updateData);
-    const { data, error } = await (supabase as any)
-      .from('users')
-      .update(updateData)
-      .eq('id', userId)
-      .select();
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('users')
+          .update(updateData)
+          .eq('id', userId)
+          .select();
 
-    if (error) {
-      console.error('Admin Dashboard: Update error:', error);
-      if (error.code === '23505') { // Unique constraint violation
-        if (error.message.includes('email')) {
-          Alert.alert('Error', 'Email address is already in use by another account.');
-        } else if (error.message.includes('username')) {
-          Alert.alert('Error', 'Username is already taken.');
-        } else {
-          Alert.alert('Error', 'Duplicate value entered.');
+        if (error) {
+          if (error.code === '23505') { // Unique constraint violation
+            if (error.message.includes('email')) {
+              alert('Error: Email address is already in use by another account.');
+            } else if (error.message.includes('username')) {
+              alert('Error: Username is already taken.');
+            } else {
+              alert('Error: Duplicate value entered.');
+            }
+          } else {
+            throw error;
+          }
+          return;
         }
-      } else {
-        throw error;
-      }
-      return;
-    }
 
-    console.log('Admin Dashboard: Update successful:', data);
-    Alert.alert('Success', 'Account updated successfully');
-    fetchUsers();
-  } catch (error: any) {
-    console.error('Admin Dashboard: Error updating account:', error);
-    Alert.alert('Error', 'Failed to update account: ' + error.message);
+        alert('Success: Account updated successfully');
+        fetchUsers();
+      } catch (error: any) {
+        alert('Error: Failed to update account: ' + error.message);
+      }
+    })();
+  } else {
+    // Native environment - use Alert.prompt
+    // Original native implementation remains for mobile
+    Alert.alert('Edit', 'Edit functionality available on mobile only');
   }
 };
 
 const verifyUserEmail = async (userId: string, userEmail: string) => {
-  Alert.alert(
-    'Verify User Email',
-    `Mark ${userEmail}'s email as verified? This will allow them to access the full app.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Verify',
-        onPress: async () => {
-          try {
-            const { error } = await (supabase as any)
-              .from('users')
-              .update({
-                is_verified: true,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userId);
+  if (typeof document !== 'undefined') {
+    // Web environment
+    if (!window.confirm(`Mark ${userEmail}'s email as verified? This will allow them to access the full app.`)) {
+      return;
+    }
+    
+    try {
+      const { error } = await (supabase as any)
+        .from('users')
+        .update({
+          is_verified: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
 
-            if (error) throw error;
+      if (error) throw error;
 
-            Alert.alert('Success', 'User email verified successfully');
-            fetchUsers();
-          } catch (error: any) {
-            console.error('Error verifying user email:', error);
-            Alert.alert('Error', 'Failed to verify user email');
-          }
+      window.alert('Success: User email verified successfully');
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error verifying user email:', error);
+      window.alert('Error: Failed to verify user email');
+    }
+  } else {
+    // Native environment
+    Alert.alert(
+      'Verify User Email',
+      `Mark ${userEmail}'s email as verified? This will allow them to access the full app.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Verify',
+          onPress: async () => {
+            try {
+              const { error } = await (supabase as any)
+                .from('users')
+                .update({
+                  is_verified: true,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', userId);
+
+              if (error) throw error;
+
+              Alert.alert('Success', 'User email verified successfully');
+              fetchUsers();
+            } catch (error: any) {
+              console.error('Error verifying user email:', error);
+              Alert.alert('Error', 'Failed to verify user email');
+            }
+          },
         },
-      },
-    ]
-  );
+      ]
+    );
+  }
 };
 
   const getFilteredUsers = () => {
@@ -890,43 +994,50 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Admin Dashboard</Text>
-          <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <IconSymbol name="rectangle.portrait.and.arrow.right" size={24} color="#FFFFFF" />
-          </Pressable>
+      <ScrollView 
+        style={styles.fullScroll} 
+        contentContainerStyle={styles.fullScrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <Text style={styles.headerTitle}>Admin Dashboard</Text>
+            <Pressable style={styles.logoutButton} onPress={handleLogout}>
+              <IconSymbol name="rectangle.portrait.and.arrow.right" size={24} color="#FFFFFF" />
+            </Pressable>
+          </View>
+
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.totalUsers}</Text>
+              <Text style={styles.statLabel}>Total Users</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.activeUsers}</Text>
+              <Text style={styles.statLabel}>Active Users</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.paidUsers}</Text>
+              <Text style={styles.statLabel}>Paid Users</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.unpaidUsers}</Text>
+              <Text style={styles.statLabel}>Unpaid Users</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.totalReports}</Text>
+              <Text style={styles.statLabel}>Total Reports</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{stats.pendingReports}</Text>
+              <Text style={styles.statLabel}>Pending Reports</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.totalUsers}</Text>
-            <Text style={styles.statLabel}>Total Users</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.activeUsers}</Text>
-            <Text style={styles.statLabel}>Active Users</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.paidUsers}</Text>
-            <Text style={styles.statLabel}>Paid Users</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.unpaidUsers}</Text>
-            <Text style={styles.statLabel}>Unpaid Users</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.totalReports}</Text>
-            <Text style={styles.statLabel}>Total Reports</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.pendingReports}</Text>
-            <Text style={styles.statLabel}>Pending Reports</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.tabsContainer}>
+        <View style={styles.tabsContainer}>
         <Pressable
           style={[styles.tab, activeTab === 'users' && styles.activeTab]}
           onPress={() => setActiveTab('users')}
@@ -953,13 +1064,8 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
         </Pressable>
       </View>
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+       <View style={styles.content}>
+        <View style={styles.scrollContent}>
         {activeTab === 'users' ? (
           <>
             <TextInput
@@ -970,11 +1076,7 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
               onChangeText={setSearchQuery}
             />
 
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterContainer}
-            >
+            <View style={styles.filterGridContainer}>
               <Pressable
                 style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
                 onPress={() => setFilter('all')}
@@ -1015,7 +1117,7 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
                   Inactive
                 </Text>
               </Pressable>
-            </ScrollView>
+            </View>
 
             {getFilteredUsers().length === 0 ? (
               <View style={styles.emptyState}>
@@ -1026,9 +1128,33 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
               getFilteredUsers().map((user) => (
                 <View key={user.id} style={styles.card}>
                   <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>
-                      {user.first_name || user.username || 'No name'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                       <Text style={styles.cardTitle}>
+                         {user.first_name || user.username || 'No name'}
+                       </Text>
+                       {(user.has_paid || user.is_admin) && (
+                         <Text style={{ 
+                           fontSize: 12, 
+                           marginLeft: 8, 
+                           fontWeight: '600',
+                           color: (() => {
+                             const remaining = calculateDaysRemaining(user.account_expiry, user.created_at, user.payment_date, user.has_paid, user.is_admin);
+                             if (remaining === 'Expired') return '#EF5350';
+                             if (remaining === 'Never') return '#9C27B0';
+                             if (typeof remaining === 'number' && remaining <= 7) return '#FF9800';
+                             return '#4CAF50';
+                           })()
+                         }}>
+                           {(() => {
+                             const remaining = calculateDaysRemaining(user.account_expiry, user.created_at, user.payment_date, user.has_paid, user.is_admin);
+                             if (remaining === 'Expired') return '(Expired)';
+                             if (remaining === 'Never') return '(Never Expires)';
+                             if (remaining === 'N/A') return '';
+                             return `(${remaining} day${remaining === 1 ? '' : 's'} remaining)`;
+                           })()}
+                         </Text>
+                       )}
+                    </View>
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
                       {user.is_admin && (
                         <View style={[styles.badge, { backgroundColor: '#FF9800' }]}>
@@ -1091,10 +1217,10 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
                       style={[
                         styles.actionButton,
                         styles.editButton,
-                        user.is_admin && { opacity: 0.5 } // Dim if user is admin
+                        user.is_admin && { opacity: 0.5 }
                       ]}
                       onPress={() => user.is_admin ?
-                        Alert.alert('Cannot Edit', 'Admin accounts cannot be edited.') :
+                        (typeof document !== 'undefined' ? alert('Admin accounts cannot be edited.') : Alert.alert('Cannot Edit', 'Admin accounts cannot be edited.')) :
                         editAccount(user.id, user.email)
                       }
                     >
@@ -1127,9 +1253,12 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
                       style={[
                         styles.actionButton,
                         styles.deleteButton,
-                        user.is_admin && { opacity: 0.5 } // Dim if user is admin
+                        user.is_admin && { opacity: 0.5 }
                       ]}
-                      onPress={() => deleteAccount(user.id, user.email)}
+                      onPress={() => user.is_admin ?
+                        (typeof document !== 'undefined' ? alert('Admin accounts cannot be deleted.') : Alert.alert('Cannot Delete', 'Admin accounts cannot be deleted.')) :
+                        deleteAccount(user.id, user.email)
+                      }
                     >
                       <Text style={[styles.actionButtonText, styles.deleteButtonText]}>
                         Delete
@@ -1194,6 +1323,8 @@ const verifyUserEmail = async (userId: string, userEmail: string) => {
             )}
           </>
         )}
+          </View>
+      </View>
       </ScrollView>
     </SafeAreaView>
   );

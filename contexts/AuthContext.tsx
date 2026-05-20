@@ -28,7 +28,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string) => Promise<{ success: boolean; error?: string; requiresConfirmation?: boolean }>;
   signOut: () => Promise<void>;
-  checkUserFlow: () => Promise<void>;
+  checkUserFlow: (authUuid?: string, redirectToHome?: boolean) => Promise<void>;
   setIsResettingPassword: (value: boolean) => void;
 }
 
@@ -38,6 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  // Ref that always holds the *current* user — used inside the
+  // onAuthStateChange closure to avoid a stale-closure over `user` state
+  // (the effect has [] deps so `user` would permanently read as null).
+  const userRef = React.useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // --- 1. INITIAL LOAD & LISTENER SETUP ---
   useEffect(() => {
@@ -68,11 +76,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // ✅ Prevent duplicate SIGNED_IN events on tab refocus / visibility changes
+      // Supabase re-emits SIGNED_IN EVERY TIME tab becomes visible on web (SW refresh)
       if (event === 'SIGNED_IN' && session?.user) {
+        // Use the ref (not the stale closure over `user` state) so this guard
+        // actually works after the first login.
+        if (userRef.current?.id === session.user.id) {
+          console.log('✅ Ignoring duplicate SIGNED_IN - user is already active');
+          return;
+        }
+        
+        // Skip auth callback pages
         const isCallback = typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname.includes('auth/callback');
         if (isCallback) {
           return;
         }
+        
+        // ✅ Skip running user flow check if page is hidden / not focused
+        if (typeof document !== 'undefined' && document.hidden) {
+          console.log('✅ Page is hidden, postponing user flow check');
+          return;
+        }
+        
         console.log('Auth state changed: SIGNED_IN - checking user flow...');
         // Always store the AUTH uuid, never the DB row id
         const userProfile: User = {
@@ -81,8 +106,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profile: session.user.user_metadata,
         };
         setUser(userProfile);
-        // Don't await - let it run in background
-        checkUserFlow(session.user.id).catch(err => 
+        // Don't await - let it run in background.
+        // Pass redirectToHome=false so a background token-refresh / tab-focus
+        // SIGNED_IN event does NOT yank the user away from chat or any other
+        // screen they are currently on.  It still redirects to payment or
+        // registration if the profile is incomplete.
+        checkUserFlow(session.user.id, false).catch(err =>
           console.log('Background checkUserFlow error:', err)
         );
       } else if (event === 'SIGNED_OUT') {
@@ -95,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(null);
         if (!isPasswordResetFlow) {
-          router.replace('/welcome');
+          setTimeout(() => router.replace('/welcome'), 100);
         }
       }
     });
@@ -121,13 +150,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Query with timeout
         const userQueryPromise = supabase
           .from('users')
-          .select('id, first_name, email, has_paid, payment_status')
+          .select('*')
           .eq('auth_id', authUuid)
           .maybeSingle();
           
-        const userTimeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('User query timeout')), 10000)
-        );
+       const userTimeoutPromise = new Promise((_, reject) => 
+         setTimeout(() => reject(new Error('User query timeout')), 60000)
+       );
         
         const { data: userData, error: userError } = await Promise.race([userQueryPromise, userTimeoutPromise]) as any;
 
@@ -141,7 +170,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await checkUserFlow(authUuid);
       } else {
         // Check if this is a public page - if so, don't redirect to welcome
-        const isPublicPage = PUBLIC_PAGES.some(page => window.location.pathname.includes(page));
+        // Guard against undefined window.location (native Android/iOS)
+        const isPublicPage = typeof window !== 'undefined' && window.location && window.location.pathname
+          ? PUBLIC_PAGES.some(page => window.location.pathname.includes(page))
+          : false;
+          
         if (!isPublicPage) {
           router.replace('/welcome');
         }
@@ -150,9 +183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Error checking auth state:', error);
       // Don't block - just set loading to false and continue
       setLoading(false);
-    } finally {
-      setLoading(false);
     }
+    // Always ensure loading is turned off
+    setLoading(false);
   };
 
   // --- 3. Sign In ---
@@ -217,7 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        router.replace('/registration' as any);
+        router.replace('/payment-new' as any);
         return { success: true, requiresConfirmation: true };
       }
 
@@ -241,9 +274,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // --- 6. Centralized Flow Check ---
   // Always receives / uses the Supabase AUTH uuid, never a DB row id.
-  // Does NOT navigate on its own — returns a destination so the caller
-  // decides when to navigate (avoids racing with RegistrationScreen).
-  const checkUserFlow = async (authUuid?: string): Promise<void> => {
+  // redirectToHome: set false when called from a background event (e.g.
+  // onAuthStateChange SIGNED_IN) so the user is not yanked away from the
+  // screen they are currently on.  Still redirects if payment/registration
+  // is incomplete.
+  const checkUserFlow = async (authUuid?: string, redirectToHome = true): Promise<void> => {
     const currentAuthId = authUuid || user?.id;
     if (!currentAuthId) return;
 
@@ -256,49 +291,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('User query timeout')), 10000)
+        setTimeout(() => reject(new Error('User query timeout')), 100000)
       );
       
       const { data: userData, error: userError } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (userError || !userData) {
-        console.log('No user profile found, redirecting to registration');
-        router.replace('/registration' as any);
-        return;
-      }
-
-      console.log('User data found:', userData.id, userData.first_name);
-
-      // Keep context in sync — store auth uuid, not DB row id
-      setUser({
-        id: currentAuthId,              // ← auth uuid
-        email: userData.email,
-        profile: userData,
-      });
-
-      const hasPaid =
-        !APP_CONFIG.FEATURES.REQUIRE_PAYMENT ||
-        userData.has_paid === true ||
-        userData.payment_status === 'completed';
-
-      if (!hasPaid) {
-        console.log('Payment not completed, redirecting to payment');
+        console.log('No user profile found, redirecting to payment first');
         router.replace('/payment-new' as any);
         return;
       }
 
-      if (!userData.first_name || !userData.age) {
-        console.log('Registration incomplete, redirecting to registration');
-        router.replace('/registration' as any);
-        return;
-      }
+       console.log('User data found:', userData.id, userData.first_name);
 
-      // ✅ Profile complete — navigate to home (no setTimeout)
-      console.log('User flow complete, redirecting to home');
-      router.replace('/(tabs)/(home)');
+       // Keep context in sync — store auth uuid, not DB row id
+       setUser({
+         id: currentAuthId,              // ← auth uuid
+         email: userData.email,
+         profile: userData,
+       });
+
+       // Check if the user is an admin
+       const isAdmin = userData.is_admin === true;
+
+       const hasPaid =
+         !APP_CONFIG.FEATURES.REQUIRE_PAYMENT ||
+         userData.has_paid === true ||
+         userData.payment_status === 'completed';
+
+       if (!hasPaid) {
+         console.log('Payment not completed, redirecting to payment');
+         router.replace('/payment-new' as any);
+         return;
+       }
+
+       // Skip registration check for admin users
+       if (!isAdmin && (!userData.first_name || !userData.age)) {
+         console.log('Registration incomplete, redirecting to registration');
+         setTimeout(() => router.replace('/registration' as any), 100);
+         return;
+       }
+
+      // ✅ Payment done AND profile complete
+      if (redirectToHome) {
+        console.log('User flow complete, redirecting to home');
+        router.replace('/(tabs)/(home)');
+      } else {
+        console.log('User flow complete — already in app, skipping home redirect');
+      }
     } catch (error) {
-      console.log('Error checking user flow:', error);
-      router.replace('/welcome');
+      console.log('Error checking user flow (continuing anyway):', error);
+      // Do NOT redirect on timeout - user is already authenticated, keep them logged in
+      // Database queries can timeout occasionally, this is normal behaviour
     }
   };
 

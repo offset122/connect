@@ -1,6 +1,6 @@
 const path = require("path");
 const { getDefaultConfig } = require("expo/metro-config");
-const { FileStore } = require("metro-cache");
+const { FileStore } = require("@expo/metro/metro-cache");
 
 // Get Expo base config
 const config = getDefaultConfig(__dirname);

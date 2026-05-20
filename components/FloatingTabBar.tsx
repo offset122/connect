@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react';
-import { 
-  SafeAreaView, 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Platform, 
+import React, { useEffect, useState } from 'react';
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
   Dimensions,
 } from 'react-native';
 import Animated, {
@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useMessages } from '@/contexts/MessagesContext';
 import { useConnections } from '@/contexts/ConnectionsContext';
+import MenuPopup from './MenuPopup';
 
 export interface TabBarItem {
   name: string;
@@ -51,6 +52,7 @@ export default function FloatingTabBar({
   const { unreadCount: notificationsCount } = useNotifications();
   const { unreadMessagesCount } = useMessages();
   const { totalPendingCount: connectionsCount } = useConnections();
+  const [showMenu, setShowMenu] = useState(false);
 
   // Get badge count based on tab type
   const getBadgeCount = (tab: TabBarItem): number => {
@@ -70,7 +72,9 @@ export default function FloatingTabBar({
 
   const activeIndex = tabs.findIndex((tab) => pathname.includes(tab.name));
   const scaleValues = tabs.map(() => useSharedValue(1));
-  const tabWidth = containerWidth / tabs.length;
+  // +1 for the extra menu button
+  const totalItems = tabs.length + 1;
+  const tabWidth = containerWidth / totalItems;
 
   useEffect(() => {
     // Update scale values for active tab
@@ -96,7 +100,7 @@ export default function FloatingTabBar({
       });
     });
 
-    router.push(route as any);
+    router.navigate(route as any);
   };
 
   return (
@@ -172,8 +176,46 @@ export default function FloatingTabBar({
               </Animated.View>
             );
           })}
+
+          {/* Menu Button */}
+          <TouchableOpacity
+            style={[styles.tabWrapper, { width: tabWidth }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowMenu(true);
+            }}
+            activeOpacity={0.8}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={styles.tab}>
+              <View style={styles.iconContainer}>
+                <IconSymbol
+                  name="line.horizontal.3"
+                  size={22}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.label,
+                  {
+                    color: colors.textSecondary,
+                    fontWeight: '600',
+                    opacity: 0.8,
+                  },
+                ]}
+              >
+                Menu
+              </Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      <MenuPopup
+        isVisible={showMenu}
+        onClose={() => setShowMenu(false)}
+      />
     </View>
   );
 }

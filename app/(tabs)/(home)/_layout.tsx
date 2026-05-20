@@ -13,7 +13,7 @@ export default function HomeLayout() {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="profileview" />
+      <Stack.Screen name="profileview" options={{ headerShown: false }} />
     </Stack>
   );
 }

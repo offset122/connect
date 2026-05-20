@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, FlatList, Platform } from 'react-native';
-import { colors } from '@/styles/commonStyles';
+import { View, Text, TextInput, StyleSheet, Pressable, Modal, FlatList, Platform, useWindowDimensions } from 'react-native';
+import { colors, BREAKPOINTS, responsiveStyles } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 
 interface DropdownPickerProps {
@@ -11,6 +11,7 @@ interface DropdownPickerProps {
   onSelect: (value: string) => void;
   placeholder?: string;
   required?: boolean;
+  searchable?: boolean;
 }
 
 export default function DropdownPicker({
@@ -20,35 +21,46 @@ export default function DropdownPicker({
   onSelect,
   placeholder = 'Select an option',
   required = false,
+  searchable = false,
 }: DropdownPickerProps) {
+  const { width } = useWindowDimensions();
+  const isLarge = width >= BREAKPOINTS.lg;
+  
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredOptions = searchable
+    ? options.filter(opt => opt.toLowerCase().includes(searchQuery.toLowerCase()))
+    : options;
 
   const handleSelect = (option: string) => {
     console.log('Selected option:', option);
     onSelect(option);
     setIsOpen(false);
+    setSearchQuery('');
   };
 
   const handleOpenModal = () => {
     setIsOpen(true);
+    setSearchQuery('');
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, responsiveStyles.inputWrapper(isLarge)]}>
       <Text style={styles.label}>
         {label}
         {required && <Text style={styles.required}> *</Text>}
       </Text>
       
       <Pressable
-        style={styles.selector}
+        style={[styles.selector, responsiveStyles.input(isLarge)]}
         onPress={handleOpenModal}
       >
         <Text style={[styles.selectorText, !value && styles.placeholder]}>
           {value || placeholder}
         </Text>
         <IconSymbol
-          name="chevron-down"
+          name="chevron.down"
           size={20}
           color={colors.textSecondary}
         />
@@ -60,23 +72,44 @@ export default function DropdownPicker({
         animationType="slide"
         onRequestClose={() => setIsOpen(false)}
       >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setIsOpen(false)}
-        >
+         <Pressable
+           style={styles.modalOverlay}
+           onPress={(e) => {
+             // Only close if click is on the overlay background, not on content
+             if (e.target === e.currentTarget) {
+               setIsOpen(false);
+             }
+           }}
+         >
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{label}</Text>
-              <Pressable onPress={() => setIsOpen(false)}>
-                <IconSymbol name="close" size={24} color={colors.text} />
-              </Pressable>
-            </View>
-            
-            <FlatList
-              style={styles.optionsList}
-              data={options}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item: option }) => (
+             <View style={styles.modalHeader}>
+               <Text style={styles.modalTitle}>{label}</Text>
+               <Pressable onPress={() => setIsOpen(false)}>
+                 <IconSymbol name="xmark" size={24} color={colors.text} />
+               </Pressable>
+             </View>
+
+             {searchable && (
+               <View style={styles.searchContainer} onStartShouldSetResponder={() => true}>
+                 <TextInput
+                   style={styles.searchInput}
+                   placeholder="Search..."
+                   placeholderTextColor={colors.textSecondary}
+                   value={searchQuery}
+                   onChangeText={setSearchQuery}
+                   autoCapitalize="none"
+                   autoCorrect={false}
+                   onTouchStart={(e) => e.stopPropagation()}
+                 />
+               </View>
+             )}
+             
+             <FlatList
+               style={styles.optionsList}
+               data={filteredOptions}
+               keyExtractor={(item, index) => `${item}-${index}`}
+               keyboardShouldPersistTaps="handled"
+               renderItem={({ item: option }) => (
                 <Pressable
                   style={[
                     styles.option,
@@ -151,6 +184,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     height: '50%',
     width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
   },
   modalHeader: {
@@ -189,5 +224,21 @@ const styles = StyleSheet.create({
   optionTextSelected: {
     fontWeight: '600',
     color: colors.primary,
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  searchInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    color: colors.text,
   },
 });

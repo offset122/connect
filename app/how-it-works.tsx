@@ -1,163 +1,92 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import safeBack from '@/utils/safeRouter';
-import { IconSymbol } from "@/components/IconSymbol";
-import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "@/styles/commonStyles";
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import safeBack from '../utils/safeRouter';
+import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from '../styles/commonStyles';
+import { IconSymbol } from '../components/IconSymbol';
+import { Pressable, useWindowDimensions } from 'react-native';
 
 export default function HowItWorksScreen() {
   const { width } = useWindowDimensions();
   const isLarge = width >= BREAKPOINTS.lg;
-  
-  const [understood, setUnderstood] = useState(false);
-
-  const handleContinue = () => {
-    router.push('/terms-and-conditions');
-  };
-
-  const handleBack = () => {
-    safeBack(router);
-  };
 
   return (
-    <SafeAreaView style={commonStyles.safeArea}>
-      <View style={styles.container}>
-        {/* Header */}
+    <SafeAreaView style={commonStyles.safeArea} edges={['top']}>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={[styles.content, responsiveStyles.contentMaxWidth(isLarge)]}
+      >
         <View style={styles.header}>
-          <Pressable onPress={handleBack} style={styles.backButton}>
-            <IconSymbol name="chevron.left" size={24} color={colors.primary} />
+          <Pressable style={styles.backButton} onPress={() => safeBack(router)}>
+            <IconSymbol name="chevron.left" size={isLarge ? 28 : 24} color={colors.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>How It Works</Text>
-          <View style={{ width: 40 }} />
+          <Text style={[styles.title, responsiveStyles.title(isLarge)]}>How H.C Works</Text>
         </View>
 
-        {/* Content */}
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <Text style={styles.mainTitle}>Welcome to Hanna's Connect</Text>
-          <Text style={styles.tagline}>For the grown, the intentional, and the private.</Text>
-
-          <Text style={styles.paragraph}>
-            Hanna's Connect is a members only private dating platform for adults 25 and above who want to connect quietly and intentionally.
+        <View style={styles.section}>
+          <Text style={styles.intro}>
+            Hanna's Connect is a private, members only dating platform for adults 25 and above who want to connect quietly and intentionally. Here, connection happens on your terms without exposure, without the pressure of the public eye.
           </Text>
-
-          <Text style={styles.paragraph}>
-            For just 3,000 KES, you get 180 days of UNLIMITED access to singles across Kenya and the diaspora. The fee is non-refundable and non-transferable.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            There is no public browsing. Only members get to read the profiles of other members. And everyone here is intentionally here.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            We understand something many won't say out loud, most people desire connection, but they want to seek it in private. Because sometimes, all it takes is your picture being seen publicly to become the next topic of discussion at your workplace, by that one colleague who doesn't like you. Or worse, that cousin who'll screenshot and send it to relatives who already dislike your mother. That's where we come in.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            Nobody needs to know you're looking. And if the person you're looking for is also looking, we simply help you two meet. You can find or be found intentionally, without necessarily exposing your whole face for the world to see.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            We provide avatars for each profile. You pick one. That becomes your profile image.
-          </Text>
-
-          <Text style={styles.sectionTitle}>Photo Privacy</Text>
-          <Text style={styles.paragraph}>
-            If you choose to upload real photos, you remain fully in control.
-          </Text>
-          <Text style={styles.paragraph}>
-            Only the people you personally approve can view your photos.
-          </Text>
-          <Text style={styles.paragraph}>
-            No approval, no access.
-          </Text>
-
-          <Text style={styles.sectionTitle}>Free Renewal Guarantee</Text>
-          <Text style={styles.paragraph}>
-            If you do not get five matches within your 180 day membership, we renew you absolutely free.
-          </Text>
-          <Text style={styles.paragraph}>
-            A match means
-          </Text>
-          <Text style={styles.bulletPoint}>• You sent interest and they approved</Text>
-          <Text style={styles.bulletPoint}>• You received interest and you approved.</Text>
-          <Text style={styles.paragraph}>
-            If you do not reach five, your next 180 days are on us.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            After reading a profile, you will know whether this is someone worth engaging with even without a photo.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            If you are interested, you click "I am interested in you." They can accept or decline. If they accept, your inboxes open instantly. If they decline, you receive a respectful email.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            We do not recommend matches. You search manually using detailed filters. And whether someone is in Kenya or abroad, you connect freely in the same app at no extra cost.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            This is not a space for performance. It is for people who want something real.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            Connection does not have to be loud to be meaningful.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            The ones who move quietly are often the ones ready.
-          </Text>
-
-          <Text style={styles.paragraph}>
-            And now, so are you.
-          </Text>
-
-          <Text style={styles.note}>
-            Please note: The 3,000 KES membership fee is non-refundable and non-transferable.
-          </Text>
-
-          <Text style={styles.footerTagline}>Hanna's Connect</Text>
-          <Text style={styles.footerSlogan}>Clarity before chemistry.</Text>
-
-          {/* Checkbox */}
-          <Pressable
-            style={styles.checkboxContainer}
-            onPress={() => setUnderstood(!understood)}
-          >
-            <View style={[styles.checkbox, understood && styles.checkboxChecked]}>
-              {understood && (
-                <IconSymbol name="checkmark" size={16} color={colors.card} />
-              )}
-            </View>
-            <Text style={styles.checkboxLabel}>
-              I have read and understand how Hanna's Connect works.
-            </Text>
-          </Pressable>
-
-          <View style={{ height: 40 }} />
-        </ScrollView>
-
-        {/* Continue Button */}
-        <View style={styles.buttonContainer}>
-          <Pressable
-            style={[
-              styles.continueButton,
-              !understood && styles.continueButtonDisabled
-            ]}
-            onPress={understood ? handleContinue : undefined}
-            disabled={!understood}
-          >
-            <Text style={[
-              styles.continueButtonText,
-              !understood && styles.continueButtonTextDisabled
-            ]}>
-              Continue to Terms
-            </Text>
-            <IconSymbol name="arrow.right" size={20} color={understood ? colors.card : colors.textSecondary} />
-          </Pressable>
         </View>
-      </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Membership Pricing</Text>
+          
+          <View style={styles.pricingCard}>
+            <Text style={styles.priceAmount}>3,020 KES</Text>
+            <Text style={styles.priceDescription}>30 days of unlimited access to singles across Kenya and the diaspora, with 3 guaranteed matches.</Text>
+          </View>
+
+          <View style={styles.pricingCard}>
+            <Text style={styles.priceAmount}>5,030 KES</Text>
+            <Text style={styles.priceDescription}>90 days of unlimited access with 6 guaranteed matches.</Text>
+          </View>
+
+          <Text style={styles.guaranteeNote}>
+            If you don't reach your guaranteed matches, we renew your membership for free for the same number of days you initially paid for unless we are running a special offer. We reserve a right to change the pricing.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Strictly Anonymous</Text>
+          <Text style={styles.paragraph}>
+            Every member's identity is fully protected. EVERYONE STRICTLY uses an avatar provided as their profile image, and if you choose to upload real photos on your profile, you remain in full control.
+          </Text>
+          <Text style={styles.paragraph}>
+            You will receive a request notification like, "Michael wants to see your photos" — there's also phone number request button. Only the people you personally approve can see your photos and contact you and vice versa. Approve someone, and your inbox opens automatically. Reject someone, and the inbox remains hidden. No approvals, no access.
+          </Text>
+          <Text style={styles.paragraph}>
+            Sometimes, all it takes is one photo leak for that nosey colleague at work to slander you or that relative of yours who hates your mother to start gossiping about you. Here, that never happens.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>How Matching Works</Text>
+          <Text style={styles.paragraph}>
+            A match is simple, it happens when you send a connect request and the other member approves it, or when you receive a request and you approve it. That's it. It's a way to start a conversation. Chemistry, of course, is entirely between the two of you.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>No Pressure Dating</Text>
+          <Text style={styles.paragraph}>
+            There's no public browsing, no algorithm pushing people your way, no pressure to perform. You search manually using detailed filters, connecting intentionally with those who are also here for something real. Whether someone is in Kenya or abroad, you can connect freely in the same app at no extra cost.
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.paragraph}>
+            Many people want connection, but they want it in private. Hanna's Connect exists to remove the risk of exposure and gossip. Nobody needs to know you're looking. If the person you're looking for is also looking, we simply help you meet quietly, safely, intentionally.
+          </Text>
+          
+          <Text style={styles.tagline}>
+            Clarity before chemistry.
+          </Text>
+        </View>
+
+        <View style={styles.spacer} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -167,141 +96,83 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  content: {
+    padding: 24,
+    paddingBottom: 40,
+    alignSelf: 'center',
+    width: '100%',
+  },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginBottom: 32,
   },
   backButton: {
     width: 40,
     height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 20,
   },
-  headerTitle: {
+  title: {
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  section: {
+    marginBottom: 28,
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+    marginBottom: 12,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  mainTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+  intro: {
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.text,
-    textAlign: 'center',
+  },
+  paragraph: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.text,
+    marginBottom: 12,
+  },
+  pricingCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  priceAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.primary,
     marginBottom: 8,
+  },
+  priceDescription: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.text,
+  },
+  guaranteeNote: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   tagline: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.primary,
     textAlign: 'center',
-    marginBottom: 24,
-  },
-  paragraph: {
-    fontSize: 16,
-    color: colors.text,
-    lineHeight: 24,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  bulletPoint: {
-    fontSize: 16,
-    color: colors.text,
-    lineHeight: 24,
-    marginLeft: 16,
-    marginBottom: 8,
-  },
-  note: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 24,
-    marginBottom: 16,
-  },
-  footerTagline: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
     marginTop: 24,
   },
-  footerSlogan: {
-    fontSize: 16,
-    color: colors.primary,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  // Checkbox styles
-  checkboxContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 3,
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkboxLabel: {
-    fontSize: 14,
-    color: colors.text,
-    flex: 1,
-    lineHeight: 20,
-  },
-  buttonContainer: {
-    padding: 20,
-    backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  continueButton: {
-    flexDirection: 'row',
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    boxShadow: '0px 4px 12px rgba(63, 81, 181, 0.3)',
-    elevation: 4,
-  },
-  continueButtonDisabled: {
-    backgroundColor: colors.border,
-  },
-  continueButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.card,
-  },
-  continueButtonTextDisabled: {
-    color: colors.textSecondary,
+  spacer: {
+    height: 40,
   },
 });

@@ -35,7 +35,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const { signIn } = useAuth();
+  const { signIn, checkUserFlow } = useAuth();
 
   // ✅ Cross-platform alert
   const showAlert = (title: string, message: string) => {
@@ -96,6 +96,14 @@ export default function LoginScreen() {
       } catch (refreshError) {
         // Ignore refresh errors - main login succeeded
         console.log("Session refresh after login:", refreshError);
+      }
+
+      // ✅ Redirect to home after successful login (triggers checkUserFlow with redirectToHome=true)
+      // Use checkUserFlow to ensure payment/registration checks are performed before redirecting
+      // Get the current user ID from Supabase auth (which was just set by signIn)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await checkUserFlow(session.user.id, true);
       }
 
       setLoading(false);
@@ -281,7 +289,7 @@ export default function LoginScreen() {
 
           {/* Sign Up */}
           <Pressable
-            onPress={() => router.push("/how-it-works")}
+            onPress={() => router.push("/signup")}
             style={styles.signUpLink}
           >
             <Text

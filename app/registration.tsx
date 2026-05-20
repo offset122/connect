@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import safeBack from '../utils/safeRouter';
 import { IconSymbol } from '../components/IconSymbol';
-import { colors, commonStyles, BREAKPOINTS } from '../styles/commonStyles';
+import { colors, commonStyles, BREAKPOINTS, responsiveStyles } from '../styles/commonStyles';
 import DropdownPicker from '../components/DropdownPicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -50,10 +50,18 @@ interface RegistrationFormData {
   maritalStatus: string;
   hasKids: string;
   numberOfKids: string;
+  heightFeet: string;
+  heightInches: string;
+  weight: string;
+  complexion: string;
+  bodyShape: string;
+  tribe: string;
+  teethState: string;
   hivStatus: string;
   religion: string;
   wantKidsInFuture: string;
   believeInMarriage: string;
+  lookingFor: string;
   hasPhysicalDisability: string;
   physicalDisabilityDetails: string;
   hasCriticalIllness: string;
@@ -143,6 +151,13 @@ export default function RegistrationScreen() {
     maritalStatus: '',
     hasKids: '',
     numberOfKids: '',
+    heightFeet: '',
+    heightInches: '',
+    weight: '',
+    complexion: '',
+    bodyShape: '',
+    tribe: '',
+    teethState: '',
     hivStatus: '',
     religion: '',
     wantKidsInFuture: '',
@@ -172,6 +187,13 @@ export default function RegistrationScreen() {
     maritalStatus: 'Marital status',
     hasKids: 'Have kids',
     numberOfKids: 'Number of kids',
+    heightFeet: 'Height (Feet)',
+    heightInches: 'Height (Inches)',
+    weight: 'Weight',
+    complexion: 'Complexion',
+    bodyShape: 'Body Shape',
+    tribe: 'Tribe',
+    teethState: 'Teeth State',
     hivStatus: 'HIV status',
     religion: 'Religion',
     wantKidsInFuture: 'Want kids in future',
@@ -215,7 +237,7 @@ export default function RegistrationScreen() {
 
   const validateStep = (stepNumber: number): boolean => {
     const baseRequiredFields: { [key: number]: (keyof RegistrationFormData)[] } = {
-      1: ['name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids'],
+      1: ['avatar', 'name', 'username', 'gender', 'dateOfBirth', 'nationality', 'countryOfResidence', 'currentProfession', 'maritalStatus', 'hasKids', 'heightFeet', 'complexion', 'bodyShape'],
       2: ['hivStatus', 'religion', 'believeInMarriage', 'wantKidsInFuture', 'hasPhysicalDisability', 'hasCriticalIllness'],
       3: ['introduceYourself', 'describeAppearance', 'lookingForAppearance', 'partnerExpectations', 'doNotContactMeIf'],
     };
@@ -224,7 +246,11 @@ export default function RegistrationScreen() {
     for (const field of fields) {
       const value = formData[field];
       if (!value || value.trim() === '') {
-        Alert.alert('Required Field', `Please provide: ${fieldLabels[field]}.`);
+        if (isWebPlatform) {
+          window.alert(`Required Field: Please provide ${fieldLabels[field]}.`);
+        } else {
+          Alert.alert('Required Field', `Please provide: ${fieldLabels[field]}.`);
+        }
         return false;
       }
     }
@@ -401,26 +427,25 @@ export default function RegistrationScreen() {
   // and race with this navigation. We already know the user's state from the
   // DB operations above, so navigate directly.
   const navigateAfterSave = async (hasPaid: boolean, userId: string) => {
-    console.log('[DEBUG] navigateAfterSave START:', { hasPaid, userId, requirePayment: APP_CONFIG.FEATURES.REQUIRE_PAYMENT });
-    
-    if (!hasPaid && !APP_CONFIG.FEATURES.REQUIRE_PAYMENT) {
-      console.log('[DEBUG] Case 1: Setting user to paid (REQUIRE_PAYMENT is false)');
-      await supabase.from('users').update({
-        has_paid: true,
-        payment_status: 'completed',
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      }).eq('id', userId);
-    }
+  console.log('[DEBUG] navigateAfterSave START:', {
+    hasPaid,
+    userId,
+    requirePayment: APP_CONFIG.FEATURES.REQUIRE_PAYMENT,
+  });
 
-    const destination =
-      hasPaid || !APP_CONFIG.FEATURES.REQUIRE_PAYMENT
-        ? '/(tabs)/(home)'
-        : '/payment-new';
+  // 🚫 Enforce payment (NO auto-upgrade)
+  if (APP_CONFIG.FEATURES.REQUIRE_PAYMENT && !hasPaid) {
+    console.log('[DEBUG] Payment required: redirecting to payment');
 
-    console.log('[DEBUG] Navigation destination:', destination, { hasPaid, requirePayment: APP_CONFIG.FEATURES.REQUIRE_PAYMENT });
-    router.replace(destination as any);
-  };
+    router.replace('/payment-new' as any);
+    return;
+  }
+
+  // ✅ If payment not required OR user already paid → allow access
+  console.log('[DEBUG] Access granted: navigating to home');
+
+  router.replace('/(tabs)/(home)' as any);
+};
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -477,6 +502,13 @@ export default function RegistrationScreen() {
         current_profession: formData.currentProfession || null,
         marital_status: formData.maritalStatus || null,
         number_of_children: formData.hasKids === 'Yes' ? (parseInt(formData.numberOfKids) || 0) : 0,
+        height_feet: formData.heightFeet || null,
+        height_inches: formData.heightInches || null,
+        weight: formData.weight || null,
+        complexion: formData.complexion || null,
+        body_shape: formData.bodyShape || null,
+        tribe: formData.tribe || null,
+        teeth_state: formData.teethState || null,
         hiv_status: formData.hivStatus || null,
         religion: formData.religion || null,
         want_kids: formData.wantKidsInFuture || null,
@@ -553,8 +585,8 @@ export default function RegistrationScreen() {
         ...commonData,
         is_active: true,
         is_verified: false,
-        has_paid: !APP_CONFIG.FEATURES.REQUIRE_PAYMENT,
-        payment_status: APP_CONFIG.FEATURES.REQUIRE_PAYMENT ? 'pending' : 'completed',
+        has_paid: false,
+        payment_status: 'pending',
         created_at: new Date().toISOString(),
       };
 
@@ -802,6 +834,7 @@ export default function RegistrationScreen() {
           updateFormData('city', '');
           updateFormData('county', '');
         }}
+        searchable
       />
 
       {formData.countryOfResidence === 'Kenya' ? (
@@ -845,6 +878,73 @@ export default function RegistrationScreen() {
           keyboardType="numeric"
         />
       )}
+
+      {/* Height Section */}
+      <Text style={[styles.label, { fontSize: textFontSize, marginBottom: 8 }]}>Height</Text>
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+        <TextInput
+          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal, flex: 1, marginBottom: 0 }]}
+          placeholder="Ft"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.heightFeet}
+          onChangeText={(text) => updateFormData('heightFeet', text.replace(/[^0-9]/g, ''))}
+          keyboardType="numeric"
+          maxLength={1}
+        />
+        <TextInput
+          style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal, flex: 1, marginBottom: 0 }]}
+          placeholder="In"
+          placeholderTextColor={colors.textSecondary}
+          value={formData.heightInches}
+          onChangeText={(text) => updateFormData('heightInches', text.replace(/[^0-9]/g, ''))}
+          keyboardType="numeric"
+          maxLength={2}
+        />
+      </View>
+
+      {/* Weight */}
+      <TextInput
+        style={[styles.input, { fontSize: inputFontSize, paddingVertical: inputPaddingVertical, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Weight (kg)"
+        placeholderTextColor={colors.textSecondary}
+        value={formData.weight}
+        onChangeText={(text) => updateFormData('weight', text.replace(/[^0-9.]/g, ''))}
+        keyboardType="numeric"
+      />
+
+      {/* Complexion */}
+      <DropdownPicker
+        label="Complexion"
+        value={formData.complexion}
+        options={['Fair', 'Brown', 'Dark']}
+        onSelect={(value) => updateFormData('complexion', value)}
+      />
+
+      {/* Body Shape - Gender aware */}
+      <DropdownPicker
+        label="Body Shape"
+        value={formData.bodyShape}
+        options={
+          formData.gender === 'Male'
+            ? ['Slim', 'Average', 'Athletic', 'Potbelly']
+            : ['Average', 'Curvy', 'Petite', 'Plus size']
+        }
+        onSelect={(value) => updateFormData('bodyShape', value)}
+      />
+
+      {/* Teeth State */}
+      <DropdownPicker
+        label="State of Teeth"
+        value={formData.teethState}
+        options={[
+          'White and well aligned',
+          'Slightly stained but healthy',
+          'Crooked or misaligned',
+          'Missing teeth'
+        ]}
+        onSelect={(value) => updateFormData('teethState', value)}
+      />
+
     </View>
   );
 
@@ -967,6 +1067,17 @@ export default function RegistrationScreen() {
         numberOfLines={4}
       />
 
+      <Text style={[styles.label, { fontSize: textFontSize }]}>What kind of partner are you in a relationship?</Text>
+      <TextInput
+        style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
+        placeholder="Describe what type of partner you are..."
+        placeholderTextColor={colors.textSecondary}
+        value={formData.lookingFor}
+        onChangeText={(text) => updateFormData('lookingFor', text)}
+        multiline
+        numberOfLines={3}
+      />
+
       <Text style={[styles.label, { fontSize: textFontSize }]}>Partner expectations</Text>
       <TextInput
         style={[styles.input, styles.textArea, { fontSize: inputFontSize, paddingHorizontal: inputPaddingHorizontal }]}
@@ -1024,7 +1135,7 @@ export default function RegistrationScreen() {
             >
               <ScrollView
                 style={styles.scrollView}
-                contentContainerStyle={[styles.scrollContent, { padding: contentPadding }]}
+                contentContainerStyle={[styles.scrollContent, { padding: contentPadding }, responsiveStyles.contentMaxWidth(isLarge)]}
                 keyboardShouldPersistTaps="handled"
               >
                 {step === 1 && renderStep1()}
@@ -1034,9 +1145,9 @@ export default function RegistrationScreen() {
             </KeyboardAvoidingView>
 
             {/* Bottom button */}
-            <View style={styles.buttonContainer}>
+            <View style={[styles.buttonContainer, responsiveStyles.buttonWrapper(isLarge)]}>
               <Pressable
-                style={[styles.nextButton, loading && styles.buttonDisabled]}
+                style={[styles.nextButton, responsiveStyles.button(isLarge), loading && styles.buttonDisabled]}
                 onPress={handleNext}
                 disabled={loading}
               >

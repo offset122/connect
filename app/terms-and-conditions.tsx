@@ -14,7 +14,7 @@ export default function TermsAndConditionsScreen() {
     if (!acceptedTerms || !acceptedPrivacy) {
       Alert.alert(
         'Agreement Required',
-        'Please accept both the Terms & Conditions and Privacy Policy to continue.'
+        'You must tick both boxes to continue. Please accept both agreements to proceed with registration.'
       );
       return;
     }
@@ -240,12 +240,16 @@ export default function TermsAndConditionsScreen() {
                 )}
               </View>
               <Text style={styles.checkboxLabel}>
-                How it works
+                I understand how H.C Works
               </Text>
             </Pressable>
+
+            <Text style={styles.requiredNote}>
+              ⚠️ You must tick both boxes to continue
+            </Text>
           </View>
 
-          <View style={{ height: 100 }} />
+          <View style={{ height: 60 }} />
         </ScrollView>
 
         {/* Continue Button */}
@@ -438,5 +442,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.disabled,
     boxShadow: 'none',
     elevation: 0,
+  },
+
+  requiredNote: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.error,
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

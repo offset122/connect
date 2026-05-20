@@ -472,6 +472,19 @@ export const MARITAL_STATUS_OPTIONS = [
   'Separated',
 ];
 
+export const RELATIONSHIP_PARTNER_TYPES = [
+  'Traditional provider type',
+  'Modern equal partner',
+  'Adventurer / always on the go',
+  'Homebody / quiet life partner',
+  'Ambition focused career type',
+  'Family oriented first',
+  'Intellectual / deep conversationalist',
+  'Playful / fun loving partner',
+  'Spiritual / faith centered',
+  'Independent / personal space focused',
+];
+
 export const RELATIONSHIP_PERSPECTIVES = [
   'Traditional (man leads)',
   'Modern (woman leads)',

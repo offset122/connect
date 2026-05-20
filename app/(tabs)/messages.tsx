@@ -266,18 +266,18 @@ export default function MessagesScreen() {
 
   const handleMessagePress = (userId: string) => {
     console.log('Opening chat with:', userId);
-    router.push(`/chat/${userId}`);
+    router.push(`/chat/${userId}` as any);
   };
 
   const handleVoiceCall = (userId: string, userName: string) => {
     console.log('Starting voice call with:', userName);
-    router.push(`/chat/${userId}`);
+    router.push(`/chat/${userId}` as any);
     // TODO: Trigger voice call
   };
 
   const handleVideoCall = (userId: string, userName: string) => {
     console.log('Starting video call with:', userName);
-    router.push(`/chat/${userId}`);
+    router.push(`/chat/${userId}` as any);
     // TODO: Trigger video call
   };
 

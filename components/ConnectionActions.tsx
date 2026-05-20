@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   Alert,
 } from 'react-native';
 import { IconSymbol } from './IconSymbol';
@@ -35,9 +35,19 @@ export default function ConnectionActions({
     switch (connectionStatus) {
       case 'none':
         return (
-          <TouchableOpacity style={styles.connectButton} onPress={onConnect}>
-            <IconSymbol name="heart.fill" size={24} color={colors.card} />
-          </TouchableOpacity>
+          <Pressable 
+            style={styles.connectButton} 
+            onPress={onConnect}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Connect with ${targetUserName}`}
+            accessibilityHint="Sends a connection request to this user"
+          >
+            <View style={styles.actionContent}>
+              <IconSymbol name="heart.fill" size={24} color={colors.card} />
+              <Text style={styles.actionText}>Connect</Text>
+            </View>
+          </Pressable>
         );
         
       case 'pending':
@@ -51,18 +61,32 @@ export default function ConnectionActions({
       case 'accepted':
         return (
           <View style={styles.acceptedContainer}>
-            <TouchableOpacity style={styles.messageButton} onPress={onMessage}>
+            <Pressable 
+              style={styles.messageButton} 
+              onPress={onMessage}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${targetUserName}`}
+              accessibilityHint="Opens chat window with this user"
+            >
               <View style={styles.actionContent}>
                 <IconSymbol name="message.fill" size={20} color={colors.card} />
                 <Text style={styles.actionText}>Message</Text>
               </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.photoButton} onPress={onRequestPhoto}>
+            </Pressable>
+            <Pressable 
+              style={styles.photoButton} 
+              onPress={onRequestPhoto}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Request photos from ${targetUserName}`}
+              accessibilityHint="Sends a photo request to this user"
+            >
               <View style={styles.actionContent}>
                 <IconSymbol name="photo.fill" size={20} color={colors.primary} />
                 <Text style={styles.photoText}>Request Photos</Text>
               </View>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         );
         
@@ -83,17 +107,21 @@ export default function ConnectionActions({
 }
 
 const styles = StyleSheet.create({
-  connectButton: {
+   connectButton: {
     backgroundColor: colors.secondary,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
     marginTop: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: colors.secondary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 8,
+    minHeight: 56,
+    zIndex: 10,
   },
   actionContent: {
     flexDirection: 'row',

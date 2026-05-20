@@ -17,9 +17,16 @@ const PUBLIC_PAGES = [
 ];
 
 function isPublicPage() {
-  if (typeof window === 'undefined') return false;
-  const path = window.location.pathname || '/';
-  return PUBLIC_PAGES.some(page => path.includes(page)) || path === '/' || path === '';
+  try {
+    // On native platforms window does not exist, always treat as public page on app launch
+    if (typeof window === 'undefined' || !window.location) return true;
+    const path = window.location.pathname || '/';
+    return PUBLIC_PAGES.some(page => path.includes(page)) || path === '/' || path === '';
+  } catch (e) {
+    // Always return true on any error, never fail here
+    console.log('isPublicPage check failed, falling back to public page');
+    return true;
+  }
 }
 
 export default function IndexScreen() {

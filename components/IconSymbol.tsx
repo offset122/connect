@@ -85,6 +85,8 @@ const MAPPING = {
   "gear": "settings",
   "gearshape.fill": "settings",
   "slider.horizontal.3": "tune",
+  "line.horizontal.3": "menu",
+  "list.bullet": "menu",
   "info.circle.fill": "info",
   "exclamationmark.triangle.fill": "warning",
   "exclamationmark.triangle": "warning-amber",

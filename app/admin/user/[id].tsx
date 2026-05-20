@@ -16,9 +16,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    justifyContent: 'space-between',
   },
   backButton: {
     width: 40,
@@ -39,7 +40,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   section: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -107,6 +108,52 @@ const styles = StyleSheet.create({
   successButtonText: {
     color: '#66BB6A',
   },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '15',
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  saveButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  saveButtonDisabled: {
+    backgroundColor: colors.disabled,
+  },
+  saveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -140,6 +187,24 @@ export default function AdminUserDetailsScreen() {
   const { id } = useLocalSearchParams();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState<any>({});
+
+  const initializeFormData = (userData: any) => {
+    setFormData({ ...userData });
+  };
+
+  const handleFieldChange = (field: string, value: string) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const hasChanges = () => {
+    return Object.keys(formData).some(key => formData[key] !== user?.[key]);
+  };
 
   useEffect(() => {
     fetchUserDetails();
@@ -156,6 +221,7 @@ export default function AdminUserDetailsScreen() {
       if (error) throw error;
 
       setUser(data);
+      initializeFormData(data);
     } catch (error: any) {
       console.error('Error fetching user details:', error);
       Alert.alert('Error', 'Failed to fetch user details');
@@ -214,6 +280,17 @@ export default function AdminUserDetailsScreen() {
     return value ? 'Yes' : 'No';
   };
 
+  const calculateDaysRemaining = (expiryDate: string | null): number | string => {
+    if (!expiryDate) return 'N/A';
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'Expired';
+    return diffDays;
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -228,6 +305,70 @@ export default function AdminUserDetailsScreen() {
     return null;
   }
 
+  const handleSave = async () => {
+    if (!user) return;
+    
+    setSaving(true);
+    try {
+      const updateData: any = {};
+      
+      // Only include fields that were actually changed
+      Object.keys(formData).forEach(key => {
+        if (formData[key] !== user[key]) {
+          updateData[key] = formData[key];
+        }
+      });
+      
+      if (Object.keys(updateData).length === 0) {
+        Alert.alert('Info', 'No changes to save');
+        setIsEditing(false);
+        return;
+      }
+      
+      updateData.updated_at = new Date().toISOString();
+      
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', user.id);
+        
+      if (error) throw error;
+      
+      Alert.alert('Success', 'User profile updated successfully');
+      setIsEditing(false);
+      fetchUserDetails();
+      
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      Alert.alert('Error', 'Failed to update profile: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (hasChanges()) {
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes. Are you sure you want to cancel?',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => {
+              initializeFormData(user);
+              setIsEditing(false);
+            }
+          }
+        ]
+      );
+    } else {
+      initializeFormData(user);
+      setIsEditing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -235,6 +376,36 @@ export default function AdminUserDetailsScreen() {
           <IconSymbol name="chevron.left" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>User Details</Text>
+        {!isEditing ? (
+          <Pressable
+            style={styles.editButton}
+            onPress={() => setIsEditing(true)}
+          >
+            <IconSymbol name="pencil" size={20} color={colors.primary} />
+            <Text style={styles.editButtonText}>Edit</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.editActions}>
+            <Pressable
+              style={styles.cancelButton}
+              onPress={handleCancel}
+              disabled={saving}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
@@ -282,12 +453,8 @@ export default function AdminUserDetailsScreen() {
             <Text style={styles.value}>{user.county || 'N/A'}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Constituency:</Text>
-            <Text style={styles.value}>{user.constituency || 'N/A'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Tribe:</Text>
-            <Text style={styles.value}>{user.tribe || user.tribe_other || 'N/A'}</Text>
+            <Text style={styles.label}>City:</Text>
+            <Text style={styles.value}>{user.city || 'N/A'}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Religion:</Text>
@@ -298,24 +465,40 @@ export default function AdminUserDetailsScreen() {
             <Text style={styles.value}>{user.marital_status || 'N/A'}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Education:</Text>
-            <Text style={styles.value}>{user.education_level || 'N/A'}</Text>
-          </View>
-          <View style={styles.row}>
             <Text style={styles.label}>Profession:</Text>
             <Text style={styles.value}>{user.current_profession || 'N/A'}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Employment:</Text>
-            <Text style={styles.value}>{user.employment_status || 'N/A'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Financial Stability:</Text>
-            <Text style={styles.value}>{user.financial_stability || 'N/A'}</Text>
-          </View>
-          <View style={[styles.row, styles.lastRow]}>
             <Text style={styles.label}>Children:</Text>
             <Text style={styles.value}>{user.number_of_children || 0}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Believe in Marriage:</Text>
+            <Text style={styles.value}>{user.believe_in_marriage || 'N/A'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Physical Disability:</Text>
+            <Text style={styles.value}>{formatBoolean(user.has_physical_disability)}</Text>
+          </View>
+          {user.has_physical_disability && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Disability Details:</Text>
+              <Text style={styles.value}>{user.physical_disability_details || 'N/A'}</Text>
+            </View>
+          )}
+          <View style={styles.row}>
+            <Text style={styles.label}>Critical Illness:</Text>
+            <Text style={styles.value}>{formatBoolean(user.has_critical_illness)}</Text>
+          </View>
+          {user.has_critical_illness && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Illness Details:</Text>
+              <Text style={styles.value}>{user.critical_illness_details || 'N/A'}</Text>
+            </View>
+          )}
+          <View style={[styles.row, styles.lastRow]}>
+            <Text style={styles.label}>Date of Birth:</Text>
+            <Text style={styles.value}>{user.date_of_birth || 'N/A'}</Text>
           </View>
         </View>
 
@@ -326,28 +509,20 @@ export default function AdminUserDetailsScreen() {
             <Text style={styles.value}>{formatBoolean(user.has_paid)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Payment Date:</Text>
-            <Text style={styles.value}>{formatDate(user.payment_date)}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Account Expiry:</Text>
-            <Text style={styles.value}>{formatDate(user.account_expiry)}</Text>
+            <Text style={styles.label}>Payment Status:</Text>
+            <Text style={styles.value}>{user.payment_status || 'N/A'}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Created At:</Text>
             <Text style={styles.value}>{formatDate(user.created_at)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Last Login:</Text>
-            <Text style={styles.value}>{formatDate(user.last_login)}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Is Verified:</Text>
-            <Text style={styles.value}>{formatBoolean(user.is_verified)}</Text>
+            <Text style={styles.label}>Updated At:</Text>
+            <Text style={styles.value}>{formatDate(user.updated_at)}</Text>
           </View>
           <View style={[styles.row, styles.lastRow]}>
-            <Text style={styles.label}>Online Status:</Text>
-            <Text style={styles.value}>{formatBoolean(user.online_status)}</Text>
+            <Text style={styles.label}>Is Admin:</Text>
+            <Text style={styles.value}>{formatBoolean(user.is_admin)}</Text>
           </View>
         </View>
 
@@ -451,6 +626,13 @@ export default function AdminUserDetailsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Imperfections</Text>
             <Text style={styles.value}>{user.imperfections}</Text>
+          </View>
+        )}
+
+        {user.introduce_yourself && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>About User</Text>
+            <Text style={styles.value}>{user.introduce_yourself}</Text>
           </View>
         )}
 

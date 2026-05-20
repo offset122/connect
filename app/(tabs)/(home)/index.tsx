@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Stack, useRouter } from "expo-router";
-import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, RefreshControl, useWindowDimensions, Image, ImageBackground, TextInput } from "react-native";
+import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, RefreshControl, useWindowDimensions, Image, ImageBackground, TextInput, Modal } from "react-native";
 import { IconSymbol } from "../../../components/IconSymbol";
+import DropdownPicker from "../../../components/DropdownPicker";
 import { colors, commonStyles, spacing, borderRadius, responsiveStyles, BREAKPOINTS } from "../../../styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../integrations/supabase/client";
@@ -9,38 +10,35 @@ import { calculateMatchPercentage, getMatchColor } from "../../../utils/matchmak
 import PhoneNumberRequest from "../../../components/PhoneNumberRequest";
 import ConnectionActions from "../../../components/ConnectionActions";
 import { LinearGradient } from 'expo-linear-gradient';
+import HeaderNotificationButton from '@/components/HeaderNotificationButton';
 
 // Get local avatar image from assets
 const getAvatarImage = (filename: string | null | undefined) => {
   if (!filename) return null;
-  
+
   const avatarMap: { [key: string]: any } = {
     '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../../../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
-    '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../../../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
-    '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../../../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
-    'androgynous-avatar-non-binary-queer-person.jpg': require('../../../assets/androgynous-avatar-non-binary-queer-person.jpg'),
-    'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../../../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
-    'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg': require('../../../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
-    'av1.jpg': require('../../../assets/av1.jpg'),
-    'av2.jpg': require('../../../assets/av2.jpg'),
-    'av3.jpg': require('../../../assets/av3.jpg'),
-    'av4.jpg': require('../../../assets/av4.jpg'),
-    'av5.jpg': require('../../../assets/av5.jpg'),
-    'av6.jpg': require('../../../assets/av6.jpg'),
     'men1.jpg': require('../../../assets/men1.jpg'),
     'men2.jpg': require('../../../assets/men2.jpg'),
-    'men3.jpg': require('../../../assets/men3.jpg'),
+    '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../../../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
+    'androgynous-avatar-non-binary-queer-person.jpg': require('../../../assets/androgynous-avatar-non-binary-queer-person.jpg'),
+    'av6.jpg': require('../../../assets/av6.jpg'),
   };
   return avatarMap[filename] || null;
 };
 
-// Get random avatar if user has none
-const getRandomAvatar = () => {
+// Get consistent fixed avatar for user without avatar (no random changes)
+const getFixedAvatarForUser = (userId: string) => {
   const avatars = [
     'av1.jpg', 'av2.jpg', 'av3.jpg', 'av4.jpg', 'av5.jpg', 'av6.jpg'
   ];
-  const randomIndex = Math.floor(Math.random() * avatars.length);
-  return avatars[randomIndex];
+  // Use user id hash to get consistent index that never changes for same user
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % avatars.length;
+  return avatars[index];
 };
 
 // --- Type definitions ---
@@ -68,6 +66,12 @@ export default function DiscoverScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'online' | 'new' | 'kenya' | 'diaspora' | 'men' | 'women'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Admin Edit Modal State
+  const [showAdminEditModal, setShowAdminEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState<any>({});
+  const [savingEdit, setSavingEdit] = useState(false);
   
   // Advanced filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -81,6 +85,27 @@ export default function DiscoverScreen() {
   const [selectedCounty, setSelectedCounty] = useState<string>('');
   const [selectedReligion, setSelectedReligion] = useState<string>('');
   const [selectedWantKids, setSelectedWantKids] = useState<string>('');
+  const [selectedHasKids, setSelectedHasKids] = useState<string>('');
+  const [showFilterButtons, setShowFilterButtons] = useState(true);
+
+  // Kenya counties list
+  const kenyaCounties = [
+    'Baringo', 'Bomet', 'Bungoma', 'Busia', 'Elgeyo-Marakwet', 'Embu', 'Garissa',
+    'Homa Bay', 'Isiolo', 'Kajiado', 'Kakamega', 'Kericho', 'Kiambu', 'Kilifi',
+    'Kirinyaga', 'Kisii', 'Kisumu', 'Kitui', 'Kwale', 'Laikipia', 'Lamu',
+    'Machakos', 'Makueni', 'Mandera', 'Marsabit', 'Meru', 'Migori', 'Mombasa',
+    'Muranga', 'Nairobi', 'Nakuru', 'Nandi', 'Narok', 'Nyamira', 'Nyandarua',
+    'Nyeri', 'Samburu', 'Siaya', 'Taita-Taveta', 'Tana River', 'Tharaka-Nithi',
+    'Trans Nzoia', 'Turkana', 'Uasin Gishu', 'Vihiga', 'Wajir', 'West Pokot'
+  ];
+
+  // Countries list
+  const countriesList = [
+    'Kenya', 'Uganda', 'Tanzania', 'Rwanda', 'Burundi', 'South Sudan',
+    'Ethiopia', 'Somalia', 'United States', 'United Kingdom', 'Canada',
+    'Australia', 'Germany', 'France', 'India', 'South Africa', 'Nigeria',
+    'Ghana', 'Egypt', 'Morocco'
+  ];
 
 
   const { width } = useWindowDimensions();
@@ -104,13 +129,15 @@ export default function DiscoverScreen() {
       setCurrentUserId(user.id);
 
       // 2. Fetch Current User Profile
-      const { data: currentProfile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('auth_id', user.id)
-        .single();
+      const { data: profileRows, error: profileError } = await supabase
+  .from('users')
+  .select('*')
+  .eq('auth_id', user.id)
+  .limit(1);
 
-      if (profileError || !currentProfile) {
+const currentProfile = profileRows?.[0] ?? null;
+
+if (profileError || !currentProfile) {
         throw new Error('Profile not found. Please complete registration.');
       }
       setCurrentUserProfile(currentProfile);
@@ -127,10 +154,12 @@ export default function DiscoverScreen() {
       connectionsData?.forEach((conn: any) => {
         const otherId = conn.requester_id === currentProfile.id ? conn.recipient_id : conn.requester_id;
         
-        // Exclude all connected users (pending, accepted, rejected) from the discover list
-        excludedIds.add(otherId);
+        // ONLY exclude ACCEPTED connections, leave pending and rejected users visible
+        if (conn.status === 'accepted') {
+          excludedIds.add(otherId);
+        }
         
-        // Map connection status for potential display logic
+        // Map connection status for display logic
         connectionMap.set(otherId, conn.status);
       });
 
@@ -157,16 +186,27 @@ export default function DiscoverScreen() {
           last_login,
           created_at,
           is_active,
-          has_paid
+          has_paid,
+          is_admin,
+          payment_date,
+          subscription_plan,
+          subscription_expires_at
         `)
         .eq('is_active', true)
         .eq('has_paid', true)
         .neq('id', currentProfile.id) // Exclude self
+        .not('first_name', 'is', null)
+        .not('age', 'is', null)
+        .not('gender', 'is', null)
+        .gte('age', 18)
         .limit(50);
         
       if (excludedIdsArray.length > 1) {
-          // Exclude already connected users using a NOT IN clause
-          query = query.not('id', 'in', `(${excludedIdsArray.filter(id => id !== currentProfile.id).join(',')})`);
+          // Only exclude ACCEPTED connections, keep pending/rejected visible
+          const acceptedOnlyIds = excludedIdsArray.filter(id => id !== currentProfile.id);
+          if (acceptedOnlyIds.length > 0) {
+            query = query.not('id', 'in', `(${acceptedOnlyIds.join(',')})`);
+          }
       }
 
       const { data: usersData, error: usersError } = await query;
@@ -183,19 +223,20 @@ export default function DiscoverScreen() {
       }
 
       // 5. Map Users (removed match percentage calculation)
-      const mappedUsers: User[] = usersData.map((u: any) => {
+      const mappedUsers: User[] = usersData.filter((u: any) => !u.is_admin).map((u: any) => {
         const status = connectionMap.get(u.id) || 'none';
 
         return {
           id: u.id,
-          name: u.first_name || 'Unknown',
-          age: u.age || 0,
+          name: u.is_admin ? 'Admin' : u.first_name || 'Unknown',
+          age: u.is_admin ? 0 : u.age || 0,
           location: u.county || u.country_of_residence || 'Unknown',
           introduce_yourself: u.introduce_yourself,
           avatar: u.avatar || (u.gender === 'Male' ? '👨' : '👩'),
           interests: u.interests || [],
           profileData: u,
           connectionStatus: status,
+          isAdmin: u.is_admin || false,
         };
       });
       
@@ -226,10 +267,11 @@ export default function DiscoverScreen() {
   const filteredUsers = useMemo(() => {
     let filtered = [...users];
 
-    // Apply search filter
+    // Apply search filter - search by age (primary) and other fields
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(user =>
+        user.age.toString().includes(query) ||
         user.name.toLowerCase().includes(query) ||
         user.location.toLowerCase().includes(query) ||
         (user.introduce_yourself && user.introduce_yourself.toLowerCase().includes(query)) ||
@@ -279,10 +321,15 @@ export default function DiscoverScreen() {
       );
     }
 
-    if (selectedProfession) {
-      filtered = filtered.filter(user => 
-        user.profileData?.current_profession?.toLowerCase().includes(selectedProfession.toLowerCase())
-      );
+    if (selectedHasKids) {
+      filtered = filtered.filter(user => {
+        if (selectedHasKids === 'With Kids') {
+          return user.profileData?.has_children === true;
+        } else if (selectedHasKids === 'Without Kids') {
+          return user.profileData?.has_children === false || user.profileData?.has_children == null;
+        }
+        return true;
+      });
     }
 
     if (selectedHivStatus) {
@@ -321,6 +368,12 @@ export default function DiscoverScreen() {
       );
     }
 
+    if (selectedProfession) {
+      filtered = filtered.filter(user =>
+        user.profileData?.current_profession?.toLowerCase() === selectedProfession.toLowerCase()
+      );
+    }
+
     return filtered;
   }, [users, searchQuery, selectedFilter, ageRange, selectedGender, selectedProfession, selectedHivStatus, selectedMaritalStatus, selectedCountry, selectedCounty, selectedReligion, selectedWantKids]);
 
@@ -341,10 +394,15 @@ export default function DiscoverScreen() {
   
   // --- MODIFIED: Handler for navigating to ProfileView ---
   const handleProfileView = (user: User) => {
+    // Do not allow viewing admin profiles
+    if (user.profileData?.is_admin) {
+      return;
+    }
+    
     // Pass the user object as a JSON string via navigation parameters
     router.push({
       pathname: '/(tabs)/(home)/profileview', // Ensure this path matches your file structure
-      params: { 
+      params: {
         user: JSON.stringify(user)
       }
     });
@@ -447,18 +505,14 @@ export default function DiscoverScreen() {
   };
 
   const handleMessage = (targetUser: User) => {
-    Alert.alert('Messaging', `Open chat with ${targetUser.name}`);
+    router.push(`/chat/${targetUser.id}`);
   };
 
   const handleRequestPhone = async (targetUser: User) => {
     if (!currentUserProfile) return;
 
     try {
-      // Check if connection is accepted
-      if (targetUser.connectionStatus !== 'accepted') {
-        Alert.alert('Not Connected', 'You can only request phone numbers from accepted connections.');
-        return;
-      }
+      // Allow phone number requests for any user - no connection required
 
       Alert.alert(
         'Request Phone Number',
@@ -508,12 +562,13 @@ export default function DiscoverScreen() {
             onPress: async () => {
               try {
                 // Check if request already exists
-                const { data: existingRequest } = await supabase
-                  .from('photo_requests')
-                  .select('id, request_status')
-                  .eq('requester_id', currentUserProfile.id)
-                  .eq('target_user_id', targetUser.id)
-                  .single();
+                const { data: existingRequestRows } = await supabase
+  .from('photo_requests')
+  .select('id, request_status')
+  .eq('requester_id', currentUserProfile.id)
+  .eq('target_user_id', targetUser.id)
+  .limit(1);
+const existingRequest = existingRequestRows?.[0] ?? null;
 
                 if (existingRequest) {
                   if (existingRequest.request_status === 'approved') {
@@ -574,21 +629,23 @@ export default function DiscoverScreen() {
 
     try {
       // Check if request already exists
-      const { data: existingRequest } = await (supabase as any)
-        .from('phone_number_requests')
-        .select('id, request_status')
-        .eq('requester_id', currentUserProfile.id)
-        .eq('target_user_id', targetUser.id)
-        .single();
+      const { data: existingRequestRows } = await (supabase as any)
+  .from('phone_number_requests')
+  .select('id, request_status')
+  .eq('requester_id', currentUserProfile.id)
+  .eq('target_user_id', targetUser.id)
+  .limit(1);
+const existingRequest = existingRequestRows?.[0] ?? null;
 
       if (existingRequest) {
         if (existingRequest.request_status === 'approved') {
           // Get the phone number
-          const { data: userData } = await (supabase as any)
-            .from('users')
-            .select('phone_number')
-            .eq('id', targetUser.id)
-            .single();
+          const { data: userRows } = await (supabase as any)
+  .from('users')
+  .select('phone_number')
+  .eq('id', targetUser.id)
+  .limit(1);
+const userData = userRows?.[0] ?? null;
 
           Alert.alert(
             'Phone Number Available! 📱',
@@ -653,6 +710,97 @@ export default function DiscoverScreen() {
   };
 
 
+  // --- Admin Edit User Handler ---
+  const handleAdminEditUser = (user: User) => {
+    setEditingUser(user);
+    setEditFormData({
+      first_name: user.profileData?.first_name || '',
+      last_name: user.profileData?.last_name || '',
+      email: user.profileData?.email || '',
+      age: user.profileData?.age || '',
+      gender: user.profileData?.gender || '',
+      county: user.profileData?.county || '',
+      city: user.profileData?.city || '',
+      country_of_residence: user.profileData?.country_of_residence || '',
+      nationality: user.profileData?.nationality || '',
+      religion: user.profileData?.religion || '',
+      marital_status: user.profileData?.marital_status || '',
+      number_of_children: user.profileData?.number_of_children || '',
+      current_profession: user.profileData?.current_profession || '',
+      height_ft: user.profileData?.height_ft || '',
+      height_in: user.profileData?.height_in || '',
+      weight_kg: user.profileData?.weight_kg || '',
+      body_type: user.profileData?.body_type || '',
+      complexion: user.profileData?.complexion || '',
+      tribe: user.profileData?.tribe || '',
+      teeth_state: user.profileData?.teeth_state || '',
+      hiv_status: user.profileData?.hiv_status || '',
+      blood_group: user.profileData?.blood_group || '',
+      smoking: user.profileData?.smoking || '',
+      alcohol_consumption: user.profileData?.alcohol_consumption || '',
+      has_pets: user.profileData?.has_pets || '',
+      can_relocate: user.profileData?.can_relocate || '',
+      sexual_orientation: user.profileData?.sexual_orientation || '',
+      relationship_goal: user.profileData?.relationship_goal || '',
+      want_kids: user.profileData?.want_kids || '',
+      open_to_dating_with_children: user.profileData?.open_to_dating_with_children || '',
+      can_date_with_disability: user.profileData?.can_date_with_disability || '',
+      relationship_perspective: user.profileData?.relationship_perspective || '',
+      introduce_yourself: user.profileData?.introduce_yourself || '',
+      describe_appearance: user.profileData?.describe_appearance || '',
+      looking_for_appearance: user.profileData?.looking_for_appearance || '',
+      do_not_contact_me_if: user.profileData?.do_not_contact_me_if || '',
+      what_i_hope_to_find: user.profileData?.what_i_hope_to_find || '',
+      what_to_expect_from_me: user.profileData?.what_to_expect_from_me || '',
+      imperfections: user.profileData?.imperfections || '',
+      things_i_dont_do: user.profileData?.things_i_dont_do || '',
+      is_active: user.profileData?.is_active || false,
+      has_paid: user.profileData?.has_paid || false,
+      payment_status: user.profileData?.payment_status || '',
+      subscription_plan: user.profileData?.subscription_plan || '',
+      subscription_expires_at: user.profileData?.subscription_expires_at || '',
+      has_physical_disability: user.profileData?.has_physical_disability || false,
+      physical_disability_details: user.profileData?.physical_disability_details || '',
+      has_critical_illness: user.profileData?.has_critical_illness || false,
+      critical_illness_details: user.profileData?.critical_illness_details || '',
+      believe_in_marriage: user.profileData?.believe_in_marriage || '',
+      phone_number: user.profileData?.phone_number || '',
+      avatar: user.profileData?.avatar || '',
+    });
+    setShowAdminEditModal(true);
+  };
+
+  const handleSaveAdminEdit = async () => {
+    if (!editingUser) return;
+    
+    setSavingEdit(true);
+    try {
+      // Clean up data before sending to database
+      const updateData = {...editFormData};
+      
+      // Convert empty strings to null for integer fields
+      if (updateData.age === '' || updateData.age === 0) {
+        updateData.age = null;
+      }
+      
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', editingUser.id);
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'User account updated successfully');
+      setShowAdminEditModal(false);
+      fetchUsers(); // Refresh the user list
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      Alert.alert('Error', error.message || 'Failed to update user');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
 
   // --- Rendering ---
 
@@ -672,7 +820,7 @@ export default function DiscoverScreen() {
       {Platform.OS === 'ios' && (
         <Stack.Screen
           options={{
-            title: "Discover",
+            title: "Welcome to HC",
             headerLargeTitle: true,
           }}
         />
@@ -688,8 +836,12 @@ export default function DiscoverScreen() {
             style={styles.heroGradient}
           >
             <View style={styles.heroContent}>
-              <Text style={styles.heroTitle}>Discover</Text>
-              <Text style={styles.heroSubtitle}>Find your perfect match</Text>
+              <View style={styles.headerRow}>
+                <View>
+                  <Text style={styles.heroTitle}>Welcome to HC</Text>
+                  <Text style={styles.heroSubtitle}></Text>
+                </View>
+              </View>
               
               {/* Search Bar with Filter Toggle */}
               <Pressable 
@@ -700,7 +852,8 @@ export default function DiscoverScreen() {
                   <IconSymbol name="magnifyingglass" size={20} color={colors.textSecondary} />
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search by name, location, interests..."
+                    placeholder="Search by age, profession, location..."
+                    keyboardType="number-pad"
                     placeholderTextColor={colors.textSecondary}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -738,7 +891,41 @@ export default function DiscoverScreen() {
                 </Pressable>
                 <View style={styles.statDivider} />
                 <Pressable style={[styles.statItem, selectedFilter === 'new' && styles.statItemActive]} onPress={() => setSelectedFilter(selectedFilter === 'new' ? 'all' : 'new')}>
-                  <Text style={styles.statLabel}>New This Week</Text>
+                  <Text style={styles.statLabel}>
+                    {(() => {
+                      // Calculate correct remaining days for CURRENT USER only
+                      if (!currentUserProfile) return 'New This Week';
+                      
+                      // Admin accounts have unlimited access never expire
+                      if (currentUserProfile.is_admin) return 'Unlimited';
+                      
+                      const planDays = currentUserProfile.subscription_plan === '90' ? 90 : 30;
+                      
+                      if (currentUserProfile.subscription_expires_at) {
+                        const expiry = new Date(currentUserProfile.subscription_expires_at);
+                        const diffTime = expiry.getTime() - Date.now();
+                        const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                        
+                        if (days <= 0) return 'Expired';
+                        if (days === 1) return `${days} day remaining`;
+                        return `${days} days remaining`;
+                      }
+                      
+                      // Fallback calculation from payment date
+                      if (currentUserProfile.payment_date) {
+                        const startDate = new Date(currentUserProfile.payment_date);
+                        const expiry = new Date(startDate.getTime() + planDays * 24 * 60 * 60 * 1000);
+                        const diffTime = expiry.getTime() - Date.now();
+                        const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+                        
+                        if (days <= 0) return 'Expired';
+                        if (days === 1) return `${days} day remaining`;
+                        return `${days} days remaining`;
+                      }
+
+                      return 'New This Week';
+                    })()}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -860,6 +1047,18 @@ export default function DiscoverScreen() {
                 </View>
               </View>
 
+              {/* Profession */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterGroupTitle}>Profession</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  placeholder="Filter by profession..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={selectedProfession}
+                  onChangeText={setSelectedProfession}
+                />
+              </View>
+
               {/* Want Kids */}
               <View style={styles.filterGroup}>
                 <Text style={styles.filterGroupTitle}>Want Children</Text>
@@ -881,35 +1080,59 @@ export default function DiscoverScreen() {
               {/* Country/County */}
               <View style={styles.filterGroup}>
                 <Text style={styles.filterGroupTitle}>Location</Text>
-                <TextInput
-                  style={styles.filterInput}
-                  placeholder="Country (e.g., Kenya)"
-                  placeholderTextColor={colors.textSecondary}
+                
+                <DropdownPicker
+                  label=""
                   value={selectedCountry}
-                  onChangeText={setSelectedCountry}
+                  options={countriesList}
+                  onSelect={setSelectedCountry}
+                  placeholder="Select Country"
+                  searchable
                 />
-                <TextInput
-                  style={[styles.filterInput, { marginTop: spacing.sm }]}
-                  placeholder="County (e.g., Nairobi)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={selectedCounty}
-                  onChangeText={setSelectedCounty}
-                />
+                
+                {selectedCountry === 'Kenya' ? (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <DropdownPicker
+                      label=""
+                      value={selectedCounty}
+                      options={kenyaCounties}
+                      onSelect={setSelectedCounty}
+                      placeholder="Select County"
+                      searchable
+                    />
+                  </View>
+                ) : (
+                  <TextInput
+                    style={[styles.filterInput, { marginTop: spacing.sm }]}
+                    placeholder="City / County"
+                    placeholderTextColor={colors.textSecondary}
+                    value={selectedCounty}
+                    onChangeText={setSelectedCounty}
+                  />
+                )}
               </View>
 
-              {/* Profession */}
+              {/* With or Without Kids */}
               <View style={styles.filterGroup}>
-                <Text style={styles.filterGroupTitle}>Profession</Text>
-                <TextInput
-                  style={styles.filterInput}
-                  placeholder="Enter profession"
-                  placeholderTextColor={colors.textSecondary}
-                  value={selectedProfession}
-                  onChangeText={setSelectedProfession}
-                />
+                <Text style={styles.filterGroupTitle}>With or Without Kids</Text>
+                <View style={styles.filterOptionsRow}>
+                  {['With Kids', 'Without Kids'].map((option) => (
+                    <Pressable
+                      key={option}
+                      style={[styles.filterOption, selectedHasKids === option && styles.filterOptionActive]}
+                      onPress={() => setSelectedHasKids(selectedHasKids === option ? '' : option)}
+                    >
+                      <Text style={[styles.filterOptionText, selectedHasKids === option && styles.filterOptionTextActive]}>
+                        {option}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
 
-              {/* Action Buttons */}
+            </ScrollView>
+
+              {/* Action Buttons OUTSIDE scrollview */}
               <View style={styles.filterActionButtons}>
                 <Pressable
                   style={styles.clearFiltersButton}
@@ -917,6 +1140,7 @@ export default function DiscoverScreen() {
                     setAgeRange({ min: 18, max: 80 });
                     setSelectedGender('');
                     setSelectedProfession('');
+                    setSelectedHasKids('');
                     setSelectedHivStatus('');
                     setSelectedMaritalStatus('');
                     setSelectedCountry('');
@@ -924,23 +1148,24 @@ export default function DiscoverScreen() {
                     setSelectedReligion('');
                     setSelectedWantKids('');
                   }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <IconSymbol name="xmark.circle.fill" size={20} color={colors.card} />
+                  <IconSymbol name="xmark.circle.fill" size={22} color={colors.card} />
                   <Text style={styles.clearFiltersText}>Clear All</Text>
                 </Pressable>
 
                 <Pressable
-                  style={styles.applyFiltersButton}
+                  style={styles.searchInButton}
                   onPress={() => {
                     setShowAdvancedFilters(false);
                     setSearchFocused(false);
                   }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <IconSymbol name="checkmark.circle.fill" size={20} color={colors.card} />
-                  <Text style={styles.applyFiltersText}>Apply Filters</Text>
+                  <IconSymbol name="checkmark.circle.fill" size={22} color={colors.card} />
+                  <Text style={styles.searchInText}>Search</Text>
                 </Pressable>
               </View>
-            </ScrollView>
           </View>
         )}
 
@@ -959,20 +1184,21 @@ export default function DiscoverScreen() {
           {filteredUsers.length > 0 ? (
             <View style={viewMode === 'grid' ? styles.profilesGrid : styles.profilesList}>
               {filteredUsers.map((user, index) => (
-                <Pressable 
-                  key={user.id} 
+                <Pressable
+                  key={user.id}
                   onPress={() => handleProfileView(user)}
                   style={[
                     viewMode === 'grid' ? styles.profileCard : styles.profileCardList,
-                    viewMode === 'grid' && { 
+                    viewMode === 'grid' && {
                       width: cardWidth,
-                      marginRight: index % 2 === 0 ? spacing.lg : 0, 
-                    }
+                      marginRight: index % 2 === 0 ? spacing.lg : 0,
+                    },
+                    user.profileData?.is_admin && styles.adminCard
                   ]}
                 >
                   {/* Hero Image Section with Gradient Overlay */}
                   <ImageBackground
-                    source={user.avatar ? getAvatarImage(user.avatar) || getAvatarImage(getRandomAvatar()) : getAvatarImage(getRandomAvatar())}
+                    source={user.avatar ? getAvatarImage(user.avatar) || getAvatarImage(getFixedAvatarForUser(user.id)) : getAvatarImage(getFixedAvatarForUser(user.id))}
                     style={viewMode === 'grid' ? styles.heroImageCard : styles.heroImageCardList}
                     resizeMode="cover"
                   >
@@ -981,15 +1207,27 @@ export default function DiscoverScreen() {
                       style={styles.cardGradient}
                     >
                       {/* Like Button - Top Right (Replaced Match Percentage) */}
-                      <Pressable 
-                        style={styles.likeButton}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleConnect(user);
-                        }}
-                      >
-                        <IconSymbol name="heart.fill" size={20} color="#FF6B9D" />
-                      </Pressable>
+                      {currentUserProfile?.is_admin ? (
+                        <Pressable
+                          style={styles.likeButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleAdminEditUser(user);
+                          }}
+                        >
+                          <IconSymbol name="gearshape.fill" size={20} color={colors.primary} />
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          style={styles.likeButton}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleConnect(user);
+                          }}
+                        >
+                          <IconSymbol name="heart.fill" size={20} color="#FF6B9D" />
+                        </Pressable>
+                      )}
 
                       {/* Online Status Badge - Top Left */}
                       <View style={[
@@ -1075,16 +1313,12 @@ export default function DiscoverScreen() {
                         <Text style={styles.connectButtonText}>Connect</Text>
                       </Pressable>
 
-                      {/* Request Number Button - Secondary */}
-                      <Pressable 
-                        style={styles.requestNumberButtonModern}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleRequestNumber(user);
-                        }}
-                      >
-                        <IconSymbol name="phone.fill" size={18} color={colors.primary} />
-                      </Pressable>
+                       {/* Request Number Button - Secondary using proper component */}
+                       <PhoneNumberRequest
+                         targetUserName={user.name}
+                         targetUserId={user.id}
+                         compact={true}
+                       />
                     </View>
                   )}
 
@@ -1096,16 +1330,12 @@ export default function DiscoverScreen() {
                         <Text style={styles.sentText}>Request Sent</Text>
                       </View>
 
-                      {/* Request Number Button - Still clickable */}
-                      <Pressable 
-                        style={styles.requestNumberButtonModern}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleRequestNumber(user);
-                        }}
-                      >
-                        <IconSymbol name="phone.fill" size={18} color={colors.primary} />
-                      </Pressable>
+                       {/* Request Number Button - Still clickable using proper component */}
+                       <PhoneNumberRequest
+                         targetUserName={user.name}
+                         targetUserId={user.id}
+                         compact={true}
+                       />
                     </View>
                   )}
 
@@ -1123,16 +1353,12 @@ export default function DiscoverScreen() {
                         <Text style={styles.connectButtonText}>Message</Text>
                       </Pressable>
 
-                      {/* Request Number Button */}
-                      <Pressable 
-                        style={styles.requestNumberButtonModern}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleRequestNumber(user);
-                        }}
-                      >
-                        <IconSymbol name="phone.fill" size={18} color={colors.primary} />
-                      </Pressable>
+                       {/* Request Number Button using proper component */}
+                       <PhoneNumberRequest
+                         targetUserName={user.name}
+                         targetUserId={user.id}
+                         compact={true}
+                       />
                     </View>
                   )}
 
@@ -1175,6 +1401,298 @@ export default function DiscoverScreen() {
 
 
       </View>
+
+      {/* Admin Edit User Modal */}
+      <Modal
+        visible={showAdminEditModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowAdminEditModal(false)}
+      >
+        <Pressable
+          style={styles.adminModalOverlay}
+          onPress={() => setShowAdminEditModal(false)}
+        >
+          <Pressable
+            style={styles.adminModalContainer}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.adminModalHeader}>
+              <Text style={styles.adminModalTitle}>
+                Edit User: {editingUser?.name || ''}
+              </Text>
+              <Pressable
+                style={styles.adminModalClose}
+                onPress={() => setShowAdminEditModal(false)}
+              >
+                <IconSymbol name="xmark" size={18} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.adminModalScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>First Name</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.first_name}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, first_name: text })}
+                  placeholder="First Name"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Last Name</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.last_name}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, last_name: text })}
+                  placeholder="Last Name"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Email</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.email}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, email: text })}
+                  placeholder="Email Address"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Age</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.age ? editFormData.age.toString() : ''}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, age: parseInt(text) || 0 })}
+                  placeholder="Age"
+                  keyboardType="number-pad"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Gender</Text>
+                <DropdownPicker
+                  label=""
+                  value={editFormData.gender}
+                  options={['Male', 'Female', 'Other']}
+                  onSelect={(value) => setEditFormData({ ...editFormData, gender: value })}
+                  placeholder="Select Gender"
+                />
+              </View>
+
+
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Subscription Plan</Text>
+                <DropdownPicker
+                  label=""
+                  value={editFormData.subscription_plan}
+                  options={['30', '90']}
+                  onSelect={(value) => setEditFormData({ ...editFormData, subscription_plan: value })}
+                  placeholder="Select Plan"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Country</Text>
+                <DropdownPicker
+                  label=""
+                  value={editFormData.country_of_residence}
+                  options={countriesList}
+                  onSelect={(value) => setEditFormData({ ...editFormData, country_of_residence: value })}
+                  placeholder="Select Country"
+                  searchable
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>County</Text>
+                <DropdownPicker
+                  label=""
+                  value={editFormData.county}
+                  options={kenyaCounties}
+                  onSelect={(value) => setEditFormData({ ...editFormData, county: value })}
+                  placeholder="Select County"
+                  searchable
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Subscription Expires At</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.subscription_expires_at}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, subscription_expires_at: text })}
+                  placeholder="ISO Date string"
+                />
+              </View>
+
+              {/* Profile Questions Section */}
+              <View style={styles.adminFormSectionHeader}>
+                <Text style={styles.adminFormSectionTitle}>Profile Questions</Text>
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Introduce Yourself</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.introduce_yourself}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, introduce_yourself: text })}
+                  placeholder="About the user"
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Describe Appearance</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.describe_appearance}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, describe_appearance: text })}
+                  placeholder="Physical appearance description"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Looking For</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.looking_for_appearance}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, looking_for_appearance: text })}
+                  placeholder="Partner preferences"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Do Not Contact If</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.do_not_contact_me_if}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, do_not_contact_me_if: text })}
+                  placeholder="Dealbreakers and boundaries"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>What I Hope To Find</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.what_i_hope_to_find}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, what_i_hope_to_find: text })}
+                  placeholder="Relationship goals"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>What To Expect From Me</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.what_to_expect_from_me}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, what_to_expect_from_me: text })}
+                  placeholder="User expectations"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>My Imperfections</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.imperfections}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, imperfections: text })}
+                  placeholder="Honest disclosures"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Things I Don't Do</Text>
+                <TextInput
+                  style={[styles.adminFormInput, styles.adminFormTextArea]}
+                  value={editFormData.things_i_dont_do}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, things_i_dont_do: text })}
+                  placeholder="Boundaries"
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* Additional Fields */}
+              <View style={styles.adminFormSectionHeader}>
+                <Text style={styles.adminFormSectionTitle}>Additional Profile Fields</Text>
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Phone Number</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.phone_number}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, phone_number: text })}
+                  placeholder="Contact number"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.adminFormField}>
+                <Text style={styles.adminFormLabel}>Avatar Filename</Text>
+                <TextInput
+                  style={styles.adminFormInput}
+                  value={editFormData.avatar}
+                  onChangeText={(text) => setEditFormData({ ...editFormData, avatar: text })}
+                  placeholder="Avatar image filename"
+                />
+              </View>
+
+            </ScrollView>
+
+            <View style={styles.adminModalFooter}>
+              <Pressable
+                style={[styles.adminModalBtn, styles.adminModalCancelBtn]}
+                onPress={() => setShowAdminEditModal(false)}
+                disabled={savingEdit}
+              >
+                <Text style={[styles.adminModalBtnText, styles.adminModalCancelText]}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.adminModalBtn, styles.adminModalSaveBtn, savingEdit && { opacity: 0.6 }]}
+                onPress={handleSaveAdminEdit}
+                disabled={savingEdit}
+              >
+                {savingEdit ? (
+                  <ActivityIndicator size="small" color={colors.card} />
+                ) : (
+                  <Text style={[styles.adminModalBtnText, styles.adminModalSaveText]}>Save Changes</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1211,6 +1729,11 @@ const styles = StyleSheet.create({
   },
   heroContent: {
     gap: spacing.md,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   heroTitle: {
     fontSize: 36,
@@ -1687,12 +2210,13 @@ const styles = StyleSheet.create({
   },
 
   // Advanced Filters Panel
-  advancedFiltersPanel: {
-    backgroundColor: colors.card,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    maxHeight: 400,
-  },
+   advancedFiltersPanel: {
+     backgroundColor: colors.card,
+     borderTopWidth: 1,
+     borderTopColor: colors.border,
+     maxHeight: 500,
+     paddingBottom: 0,
+   },
   advancedFiltersScroll: {
     padding: spacing.lg,
   },
@@ -1763,50 +2287,64 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  filterActionButtons: {
+   filterActionButtons: {
     flexDirection: 'row',
     gap: spacing.md,
     marginTop: spacing.md,
+    marginBottom: spacing.lg,
+    position: 'sticky',
+    bottom: 90,
+    backgroundColor: colors.card,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    zIndex: 100,
+    borderTopWidth: 5,
+    borderTopColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
   },
   clearFiltersButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     backgroundColor: colors.error,
-    paddingVertical: spacing.md,
+    paddingVertical: 10,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.lg,
     shadowColor: colors.error,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   clearFiltersText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.card,
   },
-  applyFiltersButton: {
+  searchInButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.lg,
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  applyFiltersText: {
-    fontSize: 15,
+  searchInText: {
+    fontSize: 16,
     fontWeight: '700',
     color: colors.card,
   },
@@ -1898,5 +2436,108 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.card,
     letterSpacing: 0.2,
+  },
+
+  adminCard: {
+    opacity: 0.7,
+    pointerEvents: 'none',
+  },
+
+  // Admin Edit Modal Styles
+  adminModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  adminModalContainer: {
+    backgroundColor: colors.card,
+    borderRadius: borderRadius.xl,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  adminModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  adminModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  adminModalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminModalScroll: {
+    padding: spacing.lg,
+  },
+  adminFormField: {
+    marginBottom: spacing.md,
+  },
+  adminFormLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  adminFormInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: 15,
+    color: colors.text,
+  },
+  adminModalFooter: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  adminModalBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminModalCancelBtn: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  adminModalSaveBtn: {
+    backgroundColor: colors.primary,
+  },
+  adminModalBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  adminModalCancelText: {
+    color: colors.text,
+  },
+  adminModalSaveText: {
+    color: colors.card,
   },
 });

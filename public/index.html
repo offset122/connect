@@ -4,136 +4,95 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <meta http-Equiv="Cache-Control" Content="no-cache" />
-    <meta http-Equiv="Pragma" Content="no-cache" />
-    <meta http-Equiv="Expires" Content="0" />
+    
+    <meta http-Equiv="Cache-Control" Content="public, max-age=3600" />
+    
     <link rel="manifest" href="/manifest.json" />
     <title>%WEB_TITLE%</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+
     <style id="expo-reset">
-      /* These styles make the body full-height */
-      html,
-      body {
+      html, body {
         height: 100%;
       }
-      /* These styles disable body scrolling if you are using <ScrollView> */
       body {
+        /* Prevents "pull-to-refresh" gestures on mobile that cause reloads */
+        overscroll-behavior-y: contain; 
         overflow: hidden;
       }
-      /* These styles make the root element full-height */
       #root {
         display: flex;
         height: 100%;
         flex: 1;
       }
     </style>
+
     <script>
-    window.canInstall = false;
-    window.deferredPrompt = null;
+      window.canInstall = false;
+      window.deferredPrompt = null;
 
-    window.addEventListener('load', async () => {
+      window.addEventListener('load', async () => {
+        // Skip if in development mode
+        if (!document.querySelector('script[src*="index.ts.bundle"]') && !window.location.href.includes('exp.direct')) {
 
-      // Skip PWA installation and service worker code if we're in development mode (index.ts.bundle exists)
-      // or if we're in Expo development environment
-      if (!document.querySelector('script[src*="index.ts.bundle"]') && !window.location.href.includes('exp.direct')) {
+          // PWA Install Logic
+          window.handleBeforeInstallPrompt = (e) => {
+            e.preventDefault();
+            window.deferredPrompt = e;
+            window.canInstall = true;
+          };
 
-        window.handleInstallClick = async () => {
-          console.debug("handleInstallClick called");
+          window.addEventListener('beforeinstallprompt', window.handleBeforeInstallPrompt);
 
-          if (!window.deferredPrompt) return;
+          window.handleInstallClick = async () => {
+            if (!window.deferredPrompt) return;
+            window.deferredPrompt.prompt();
+            const { outcome } = await window.deferredPrompt.userChoice;
+            if (outcome === 'accepted') window.canInstall = false;
+          };
 
-          // Show the install prompt
-          window.deferredPrompt.prompt();
-
-          console.debug("window.deferredPrompt.prompt called");
-
-          // Wait for the user to respond to the prompt
-          const { outcome } = await window.deferredPrompt.userChoice;
-
-          // Hide the install button
-          if (outcome === 'accepted') {
-            canInstall = false;
-          }
-        };
-
-        window.handleBeforeInstallPrompt = (e) => {
-          console.debug("handleBeforeInstallPrompt called");
-
-          // Prevent Chrome 67 and earlier from automatically showing the prompt
-          e.preventDefault();
-
-          // Stash the event so it can be triggered later
-          window.deferredPrompt = e;
-
-          // Update UI to notify the user they can install the PWA
-          window.canInstall = true;
-        };
-
-        window.addEventListener('beforeinstallprompt', window.handleBeforeInstallPrompt);
-
-        if ('serviceWorker' in navigator) {
-          // Unregister any existing service worker first
-          const existingRegistration = await navigator.serviceWorker.getRegistration();
-          if (existingRegistration) {
-            console.log('Unregistering existing service worker');
-            await existingRegistration.unregister();
-          }
-
-          const registration = await navigator.serviceWorker.register('./sw.js');
-          console.log('Service Worker registered with scope:', registration.scope);
-
-          // Check for updates every 30 seconds
-          setInterval(async () => {
+          // Service Worker Registration
+          if ('serviceWorker' in navigator) {
             try {
-              await registration.update();
-            } catch (error) {
-              console.error('Error checking for updates:', error);
-            }
-          }, 200);
+              // REMOVED: The manual unregister() block that was killing your session on every load.
+              const registration = await navigator.serviceWorker.register('./sw.js');
+              console.log('Service Worker active with scope:', registration.scope);
 
-          // Listen for updates
-          registration.addEventListener('updatefound', () => {
-            console.log('Service Worker update found');
-            if (registration.installing) {
-              registration.installing.addEventListener('statechange', () => {
-                if (registration.waiting) {
-                  // Automatically activate the new service worker
-                  registration.waiting.postMessage('SKIP_WAITING');
+              // Check for updates every hour (3600000ms) instead of every 15 mins
+              setInterval(() => {
+                registration.update();
+              }, 3600000);
+
+              // Update logic
+              registration.addEventListener('updatefound', () => {
+                const installingWorker = registration.installing;
+                if (installingWorker) {
+                  installingWorker.addEventListener('statechange', () => {
+                    if (registration.waiting) {
+                      // Signal the worker to skip waiting and activate
+                      registration.waiting.postMessage('SKIP_WAITING');
+                    }
+                  });
                 }
               });
+
+              // Inform the user or log when the new worker takes over
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                console.log('New version available. Refresh to update.');
+              });
+
+            } catch (error) {
+              console.error('Service Worker failed to register:', error);
             }
-          });
-
-          // // Listen for controller change to refresh the page
-          // navigator.serviceWorker.addEventListener('controllerchange', () => {
-          //   console.log('New service worker activated, refreshing page');
-          //   window.location.reload();
-          // });
-
-          navigator.serviceWorker.addEventListener('activate', function(event) {
-            console.log('Service Worker activated');
-            event.waitUntil(
-              caches.keys().then((cacheNames) => {
-                return Promise.all(
-                  cacheNames.map((cacheName) => {
-                    return caches.delete(cacheName);
-                  })
-                );
-              })
-            );
-          });
+          }
         }
-      }
-    });
+      });
     </script>
   </head>
 
-  <body class="">
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+  <body>
     <noscript>
       You need to enable JavaScript to run this app.
     </noscript>
-    <!-- The root element for your Expo app. -->
     <div id="root"></div>
   </body>
 </html>

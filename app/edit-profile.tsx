@@ -29,6 +29,10 @@ type UserProfile = {
   county: string;
   city: string;
   current_profession: string;
+  height: string | null;
+  complexion: string | null;
+  tribe: string | null;
+  teeth_state: string | null;
   height_ft: number | null;
   height_in: number | null;
   email: string;
@@ -51,10 +55,9 @@ export default function EditProfileScreen() {
    { id: 'avatar1', filename: '3d-cartoon-portrait-person-practicing-law-related-profession.jpg', name: 'Avatar 1' },
    { id: 'avatar2', filename: '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg', name: 'Avatar 2' },
    { id: 'avatar3', filename: '2809696b-04f1-4ca8-8194-2ac46919f408.jpg', name: 'Avatar 3' },
-   { id: 'avatar4', filename: '11475208.jpg', name: 'Avatar 4' },
-   { id: 'avatar6', filename: 'androgynous-avatar-non-binary-queer-person.jpg', name: 'Avatar 6' },
-   { id: 'avatar7', filename: 'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg', name: 'Avatar 7' },
-   { id: 'avatar8', filename: 'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg', name: 'Avatar 8' },
+   { id: 'avatar4', filename: 'androgynous-avatar-non-binary-queer-person.jpg', name: 'Avatar 4' },
+   { id: 'avatar5', filename: 'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg', name: 'Avatar 5' },
+   { id: 'avatar6', filename: 'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg', name: 'Avatar 6' },
  ];
 
  // Get local avatar image
@@ -89,6 +92,10 @@ export default function EditProfileScreen() {
     county: '',
     city: '',
     current_profession: '',
+    height: '',
+    complexion: '',
+    tribe: '',
+    teeth_state: '',
     height_ft: '',
     height_in: '',
     phone_number: '',
@@ -129,7 +136,29 @@ export default function EditProfileScreen() {
       // Try fetching by database ID first
       let { data, error } = await (supabase as any)
         .from('users')
-        .select('*')
+        .select(`
+          id,
+          first_name,
+          last_name,
+          age,
+          gender,
+          county,
+          city,
+          current_profession,
+          height,
+          complexion,
+          tribe,
+          teeth_state,
+          email,
+          avatar,
+          profile_images,
+          profile_picture,
+          phone_number,
+          introduce_yourself,
+          describe_appearance,
+          looking_for_appearance,
+          do_not_contact_me_if
+        `)
         .eq('id', user.id)
         .maybeSingle();
 
@@ -138,7 +167,29 @@ export default function EditProfileScreen() {
         console.log('Edit Profile: User not found by ID, trying auth_id...');
         const result = await (supabase as any)
           .from('users')
-          .select('*')
+          .select(`
+            id,
+            first_name,
+            last_name,
+            age,
+            gender,
+            county,
+            city,
+            current_profession,
+            height,
+            complexion,
+            tribe,
+            teeth_state,
+            email,
+            avatar,
+            profile_images,
+            profile_picture,
+            phone_number,
+            introduce_yourself,
+            describe_appearance,
+            looking_for_appearance,
+            do_not_contact_me_if
+          `)
           .eq('auth_id', user.id)
           .maybeSingle();
         
@@ -169,6 +220,10 @@ export default function EditProfileScreen() {
         county: data.county || '',
         city: data.city || '',
         current_profession: data.current_profession || '',
+        height: data.height || '',
+        complexion: data.complexion || '',
+        tribe: data.tribe || '',
+        teeth_state: data.teeth_state || '',
         height_ft: data.height_ft?.toString() || '',
         height_in: data.height_in?.toString() || '',
         phone_number: data.phone_number || '',
@@ -206,6 +261,10 @@ export default function EditProfileScreen() {
         county: formData.county.trim(),
         city: formData.city.trim(),
         current_profession: formData.current_profession.trim(),
+        height: formData.height.trim() || null,
+        complexion: formData.complexion.trim() || null,
+        tribe: formData.tribe.trim() || null,
+        teeth_state: formData.teeth_state.trim() || null,
         avatar: formData.avatar ? formData.avatar.trim() : null,
         // Include read-only about you fields to preserve existing data
         introduce_yourself: formData.introduce_yourself.trim(),
@@ -450,6 +509,54 @@ export default function EditProfileScreen() {
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="numeric"
                 maxLength={2}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputRow}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Height</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.height}
+                onChangeText={(value) => handleInputChange('height', value)}
+                placeholder="e.g. 5 ft 8 in"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Complexion</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.complexion}
+                onChangeText={(value) => handleInputChange('complexion', value)}
+                placeholder="e.g. Light, Dark"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputRow}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Tribe</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.tribe}
+                onChangeText={(value) => handleInputChange('tribe', value)}
+                placeholder="Enter tribe"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>State of Teeth</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.teeth_state}
+                onChangeText={(value) => handleInputChange('teeth_state', value)}
+                placeholder="Describe teeth condition"
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
           </View>

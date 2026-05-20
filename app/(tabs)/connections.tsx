@@ -113,9 +113,13 @@ export default function ConnectionsScreen() {
           county,
           avatar,
           introduce_yourself,
-          current_profession
+          current_profession,
+          has_paid,
+          is_active
         `)
-        .in('id', Array.from(userIds));
+        .in('id', Array.from(userIds))
+        .eq('is_active', true)
+        .eq('has_paid', true);
 
       if (usersError) throw usersError;
 
@@ -123,6 +127,11 @@ export default function ConnectionsScreen() {
       const mappedConnections: ConnectionRequest[] = connectionsData?.map((conn: any) => {
         const otherUserId = conn.requester_id === user.id ? conn.recipient_id : conn.requester_id;
         const otherUser = usersData?.find((u: any) => u.id === otherUserId);
+        
+        // Only include complete active paid accounts
+        if (!otherUser || !otherUser.is_active || !otherUser.has_paid) {
+          return null;
+        }
         
         return {
           id: conn.id,
@@ -132,11 +141,11 @@ export default function ConnectionsScreen() {
           avatar: otherUser?.avatar || (otherUser?.gender === 'Male' ? '👨' : '👩'),
           introduce_yourself: otherUser?.introduce_yourself,
           current_profession: otherUser?.current_profession,
-          status: conn.status as 'pending' | 'accepted' | 'rejected' | 'liked',
+          status: (conn.status || 'pending').toLowerCase() as 'pending' | 'accepted' | 'rejected' | 'liked',
           type: conn.requester_id === user.id ? 'sent' : 'received',
           userId: otherUserId,
         };
-      }) || [];
+      }).filter(Boolean) || [];
 
       setConnections(mappedConnections);
       console.log('Connections loaded:', mappedConnections.length);
@@ -271,9 +280,23 @@ export default function ConnectionsScreen() {
     );
   }
 
-  const pendingReceived = connections.filter(c => c.status === 'pending' && c.type === 'received');
-  const pendingSent = connections.filter(c => c.status === 'pending' && c.type === 'sent');
-  const accepted = connections.filter(c => c.status === 'accepted');
+  // Use lowercase comparison only (bypass TS type warnings with any cast)
+  const pendingReceived = connections.filter(c =>
+    (c as any).status?.toLowerCase() === 'pending' && c.type === 'received'
+  );
+  const pendingSent = connections.filter(c =>
+    (c as any).status?.toLowerCase() === 'pending' && c.type === 'sent'
+  );
+  const accepted = connections.filter(c =>
+    (c as any).status?.toLowerCase() === 'accepted'
+  );
+  console.log('DEBUG Connections:', {
+    total: connections.length,
+    pendingReceived: pendingReceived.length,
+    pendingSent: pendingSent.length,
+    accepted: accepted.length,
+    raw: connections
+  });
 
   return (
     <SafeAreaView style={commonStyles.safeArea} edges={['top']}>
@@ -358,7 +381,7 @@ export default function ConnectionsScreen() {
                      }}
                    >
                      <IconSymbol name="xmark" size={20} color={colors.card} />
-                     <Text style={styles.buttonText}>Reject</Text>
+                     <Text style={styles.buttonText}>Not Compatible</Text>
                    </Pressable>
                  </View>
               </Pressable>
@@ -412,6 +435,10 @@ export default function ConnectionsScreen() {
                       style={styles.actionButton}
                       onPress={(e) => {
                         e.stopPropagation();
+                        if (!connection.userId) {
+                          Alert.alert('Error', 'Unable to open chat. User not found.');
+                          return;
+                        }
                         router.push(`/chat/${connection.userId}`);
                       }}
                     >

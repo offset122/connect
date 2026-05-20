@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking, useWindowDimensions, Modal, TextInput } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, router } from "expo-router";
@@ -44,6 +44,10 @@ export default function ProfileScreen() {
   const [showLastSeen, setShowLastSeen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordVerified, setPasswordVerified] = useState(false);
 
   useEffect(() => {
     fetchUserProfile();
@@ -73,7 +77,7 @@ export default function ProfileScreen() {
       // Query all columns that might exist - Supabase will only return columns that exist
       const { data: authIdData, error: authIdError } = await supabase
         .from('users')
-        .select('*')
+        .select('*, full_photo, passport_photo')
         .eq('auth_id', user.id)
         .maybeSingle();
 
@@ -161,7 +165,7 @@ export default function ProfileScreen() {
     }
   };
 
-  const performLogout = async () => {
+   const performLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
@@ -182,6 +186,128 @@ export default function ProfileScreen() {
       } else {
         Alert.alert('Error', 'Failed to logout. Please try again.');
       }
+    }
+  };
+
+  const verifyPassword = async () => {
+    try {
+      setLoading(true);
+      setPasswordError('');
+      
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) throw new Error('No user found');
+
+      // Verify password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password: deletePassword
+      });
+
+      if (signInError) {
+        setPasswordError('Incorrect password. Please try again.');
+        return;
+      }
+
+      // Password verified successfully
+      setPasswordVerified(true);
+      setShowPasswordModal(false);
+      
+      // Show final confirmation
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const confirmed = window.confirm('⚠️ FINAL WARNING: This will PERMANENTLY delete your account and ALL associated data. This action CANNOT be undone.\n\nType YES and click OK if you are absolutely sure.');
+        if (confirmed) {
+          await performAccountDeletion();
+        } else {
+          setPasswordVerified(false);
+          setDeletePassword('');
+        }
+      } else {
+        Alert.alert(
+          '⚠️ FINAL CONFIRMATION',
+          'This will PERMANENTLY delete your account and ALL associated data. This action CANNOT be undone.\n\nAre you absolutely sure?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                setPasswordVerified(false);
+                setDeletePassword('');
+              }
+            },
+            {
+              text: 'YES, DELETE MY ACCOUNT',
+              style: 'destructive',
+              onPress: performAccountDeletion,
+            },
+          ]
+        );
+      }
+
+    } catch (error) {
+      console.error('Password verification error:', error);
+      setPasswordError('Failed to verify password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    // Prevent admin account deletion
+    if (userProfile?.is_admin) {
+      Alert.alert(
+        'Account Deletion Not Allowed',
+        'Administrator accounts cannot be deleted. Please contact system support if you need assistance with this account.',
+        [{ text: 'OK', style: 'cancel' }]
+      );
+      return;
+    }
+    // Reset state and open password modal
+    setDeletePassword('');
+    setPasswordError('');
+    setPasswordVerified(false);
+    setShowPasswordModal(true);
+  };
+
+  const performAccountDeletion = async () => {
+    try {
+      setLoading(true);
+      
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) throw new Error('No user found');
+
+      // ✅ Use the database function which properly handles full account deletion
+      // This function already has SECURITY DEFINER and deletes ALL associated data
+      const { error: deleteError } = await supabase
+        .rpc('delete_user_account', {
+          p_user_id: userProfile.id // Pass the public user profile ID
+        });
+
+      if (deleteError) {
+        console.error('Database account deletion failed:', deleteError);
+        throw deleteError;
+      }
+
+      // Clear local storage
+      try {
+        await AsyncStorage.clear();
+      } catch (clearError) {
+        console.warn('Failed to clear AsyncStorage:', clearError);
+      }
+
+      // Sign out and redirect
+      await supabase.auth.signOut();
+      
+      Alert.alert('Account Deleted', 'Your account has been permanently deleted. All your data has been removed.');
+      router.replace('/welcome');
+
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      Alert.alert('Error', 'Failed to delete account. Please contact support.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -237,7 +363,8 @@ export default function ProfileScreen() {
       });
   };
 
-  const calculateDaysRemaining = (expiryDate: string | null) => {
+  const calculateDaysRemaining = (expiryDate: string | null, isAdmin: boolean = false) => {
+    if (isAdmin) return 'Unlimited';
     if (!expiryDate) return 'Not set';
 
     const expiry = new Date(expiryDate);
@@ -339,41 +466,53 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* Photos Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Photos</Text>
-            <Pressable onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}>
-              <Text style={styles.viewAllText}>View All</Text>
-            </Pressable>
-          </View>
-          {userProfile.profile_images && userProfile.profile_images.length > 0 ? (
-            <View style={styles.photoPreview}>
-              {userProfile.profile_images.slice(0, 3).map((photo: string, index: number) => (
-                <Pressable
-                  key={index}
-                  style={styles.photoThumb}
-                  onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
-                >
-                  <Image source={{ uri: photo }} style={styles.photoThumbImage} />
-                </Pressable>
-              ))}
-              {userProfile.profile_images.length > 3 && (
-                <View style={styles.morePhotosOverlay}>
-                  <Text style={styles.morePhotosText}>+{userProfile.profile_images.length - 3}</Text>
-                </View>
-              )}
+          {/* Photos Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>My Photos</Text>
+              <Pressable onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </Pressable>
             </View>
-          ) : (
-            <Pressable
-              style={styles.addPhotosButton}
-              onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
-            >
-              <IconSymbol name="photo.badge.plus" size={32} color={colors.primary} />
-              <Text style={styles.addPhotosText}>Add Photos</Text>
-            </Pressable>
-          )}
-        </View>
+            {userProfile.full_photo || userProfile.passport_photo ? (
+              <View style={styles.photoPreview}>
+                {userProfile.full_photo && (
+                  <Pressable
+                    key="full"
+                    style={styles.photoThumb}
+                    onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
+                  >
+                    <Image 
+                      source={{ uri: userProfile.full_photo }} 
+                      style={styles.photoThumbImage} 
+                      onError={(e) => console.log('Full photo load error:', e.nativeEvent.error)}
+                    />
+                  </Pressable>
+                )}
+                {userProfile.passport_photo && (
+                  <Pressable
+                    key="passport"
+                    style={styles.photoThumb}
+                    onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
+                  >
+                    <Image 
+                      source={{ uri: userProfile.passport_photo }} 
+                      style={styles.photoThumbImage} 
+                      onError={(e) => console.log('Passport photo load error:', e.nativeEvent.error)}
+                    />
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              <Pressable
+                style={styles.addPhotosButton}
+                onPress={() => router.push({ pathname: '/photo-gallery', params: { isOwnProfile: 'true' } })}
+              >
+                <IconSymbol name="photo.badge.plus" size={32} color={colors.primary} />
+                <Text style={styles.addPhotosText}>Add Photos</Text>
+              </Pressable>
+            )}
+          </View>
 
         {/* About Me Section */}
         {userProfile.introduce_yourself && (
@@ -540,11 +679,11 @@ export default function ProfileScreen() {
               {userProfile.has_paid ? 'Paid' : 'Pending'}
             </Text>
           </View>
-          {userProfile.account_expiry && (
+          {userProfile.subscription_expires_at && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Subscription Expires</Text>
               <Text style={[styles.detailValue, styles.subscriptionText]}>
-                {calculateDaysRemaining(userProfile.account_expiry)}
+                {calculateDaysRemaining(userProfile.subscription_expires_at, userProfile.is_admin)}
               </Text>
             </View>
           )}
@@ -577,14 +716,82 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
-        {/* Logout Button */}
-        <View style={styles.section}>
-          <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <IconSymbol name="arrow.backward.circle" size={24} color={colors.error} />
+        {/* Account Actions */}
+        <View style={{ marginTop: 24, gap: 12 }}>
+          <Pressable
+            style={styles.logoutButton}
+            onPress={handleLogout}
+          >
+            <IconSymbol name="rectangle.portrait.and.arrow.right" size={20} color={colors.error} />
             <Text style={styles.logoutButtonText}>Logout</Text>
           </Pressable>
+          
+          <Pressable
+            style={styles.deleteAccountButton}
+            onPress={handleDeleteAccount}
+          >
+            <IconSymbol name="trash.fill" size={20} color={colors.card} />
+            <Text style={styles.deleteAccountButtonText}>Delete My Account</Text>
+          </Pressable>
         </View>
+
       </ScrollView>
+
+      {/* Password Verification Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showPasswordModal}
+        onRequestClose={() => setShowPasswordModal(false)}
+      >
+        <View style={modalStyles.centeredView}>
+          <View style={modalStyles.modalView}>
+            <Text style={modalStyles.modalTitle}>Verify Your Identity</Text>
+            <Text style={modalStyles.modalSubtitle}>Please enter your account password to continue with account deletion.</Text>
+            
+            <TextInput
+              style={[modalStyles.input, passwordError ? modalStyles.inputError : null]}
+              placeholder="Enter your password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={(text) => {
+                setDeletePassword(text);
+                setPasswordError('');
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            
+            {passwordError ? <Text style={modalStyles.errorText}>{passwordError}</Text> : null}
+
+            <View style={modalStyles.buttonContainer}>
+              <Pressable
+                style={[modalStyles.button, modalStyles.cancelButton]}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setDeletePassword('');
+                  setPasswordError('');
+                }}
+              >
+                <Text style={modalStyles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[modalStyles.button, modalStyles.verifyButton, !deletePassword.trim() ? modalStyles.buttonDisabled : null]}
+                onPress={verifyPassword}
+                disabled={!deletePassword.trim() || loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color={colors.card} />
+                ) : (
+                  <Text style={modalStyles.verifyButtonText}>Verify Password</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -750,7 +957,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
   },
-  logoutButton: {
+   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -765,6 +972,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.error,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    backgroundColor: colors.error,
+    borderRadius: 8,
+  },
+  deleteAccountButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.card,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -843,4 +1064,98 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '400',
   },
+});
+
+const modalStyles = StyleSheet.create({
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 20,
+  },
+  modalView: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  input: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.background,
+    marginBottom: 12,
+  },
+  inputError: {
+    borderColor: colors.error,
+  },
+  errorText: {
+    color: colors.error,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    marginTop: 8,
+  },
+  button: {
+    flex: 1,
+    borderRadius: 8,
+    padding: 14,
+    elevation: 2,
+  },
+  cancelButton: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  verifyButton: {
+    backgroundColor: colors.error,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  cancelButtonText: {
+    color: colors.text,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  verifyButtonText: {
+    color: colors.card,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontSize: 16,
+  }
 });

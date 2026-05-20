@@ -121,15 +121,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   avatarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    gap: 16,
     justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    gap: 20,
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   avatarOption: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 85,
+    height: 85,
+    borderRadius: 42,
     borderWidth: 3,
     borderColor: 'transparent',
     overflow: 'hidden',
@@ -160,18 +165,9 @@ const AVATAR_OPTIONS = [
   { id: 'avatar1', filename: '3d-cartoon-portrait-person-practicing-law-related-profession.jpg' },
   { id: 'avatar2', filename: 'men1.jpg' },
   { id: 'avatar3', filename: 'men2.jpg' },
-  { id: 'avatar4', filename: 'men3.jpg' },
-  { id: 'avatar5', filename: '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg' },
   { id: 'avatar6', filename: '2809696b-04f1-4ca8-8194-2ac46919f408.jpg' },
   { id: 'avatar7', filename: 'androgynous-avatar-non-binary-queer-person.jpg' },
-  { id: 'avatar8', filename: 'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg' },
-  { id: 'avatar9', filename: 'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg' },
-  { id: 'avatar10', filename: 'av4.jpg' },
-  { id: 'avatar11', filename: 'av5.jpg' },
   { id: 'avatar12', filename: 'av6.jpg' },
-  { id: 'avatar13', filename: 'av1.jpg' },
-  { id: 'avatar14', filename: 'av2.jpg' },
-  { id: 'avatar15', filename: 'av3.jpg' },
 ];
 
 // Countries list
@@ -373,27 +369,18 @@ const COUNTRIES = [
     'Zimbabwe',
 ];
 
-// importer
-const getAvatarImage = (filename: string) => {
-  const avatarMap = {
-    '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
-    '408535ae-483f-477a-a0e6-3e28d0eabb88.jpg': require('../assets/408535ae-483f-477a-a0e6-3e28d0eabb88.jpg'),
-    '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
-    'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
-    'b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg': require('../assets/b85ac579-0101-483b-9c95-0f9db7e1fcc6.jpg'),
-    'b400cea9-fa0a-4595-9865-d1216fea02e8.jpg': require('../assets/b400cea9-fa0a-4595-9865-d1216fea02e8.jpg'),
-    'av1.jpg': require('../assets/av1.jpg'),
-    'av2.jpg': require('../assets/av2.jpg'),
-    'av3.jpg': require('../assets/av3.jpg'),
-    'av4.jpg': require('../assets/av4.jpg'),
-    'av5.jpg': require('../assets/av5.jpg'),
-    'av6.jpg': require('../assets/av6.jpg'),
-    'men1.jpg': require('../assets/men1.jpg'),
-    'men2.jpg': require('../assets/men2.jpg'),
-    'men3.jpg': require('../assets/men3.jpg'),
-  };
-  return avatarMap[filename] || null;
-};
+ // importer
+ const getAvatarImage = (filename: string) => {
+   const avatarMap = {
+     '3d-cartoon-portrait-person-practicing-law-related-profession.jpg': require('../assets/3d-cartoon-portrait-person-practicing-law-related-profession.jpg'),
+     'men1.jpg': require('../assets/men1.jpg'),
+     'men2.jpg': require('../assets/men2.jpg'),
+     '2809696b-04f1-4ca8-8194-2ac46919f408.jpg': require('../assets/2809696b-04f1-4ca8-8194-2ac46919f408.jpg'),
+     'androgynous-avatar-non-binary-queer-person.jpg': require('../assets/androgynous-avatar-non-binary-queer-person.jpg'),
+     'av6.jpg': require('../assets/av6.jpg'),
+   };
+   return avatarMap[filename] || null;
+ };
 
 export default function SignUpScreen() {
   const { width } = useWindowDimensions();
@@ -412,17 +399,42 @@ export default function SignUpScreen() {
 
   const handleSignUp = async () => {
     if (!email || !password || !confirmPassword || !country) {
-      Alert.alert('Error', 'Please fill in all fields');
+      const message = 'Please fill in all fields';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
+      return;
+    }
+
+    if (!selectedAvatar) {
+      const message = 'Please select an avatar to continue';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      const message = 'Password must be at least 6 characters';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      const message = 'Passwords do not match';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
       return;
     }
 
@@ -440,13 +452,28 @@ export default function SignUpScreen() {
       const result = await signUp(email, password);
 
       if (!result.success) {
-        Alert.alert('Error', result.error || 'Signup failed');
+        const errorMessage = result.error || 'Signup failed';
+        if (Platform.OS === 'web') {
+          window.alert(errorMessage);
+        } else {
+          Alert.alert('Error', errorMessage);
+        }
         return;
       }
 
-      Alert.alert('Success', 'Account created! Continue to profile setup.');
+      const successMessage = 'Account created! Continue to payment.';
+      if (Platform.OS === 'web') {
+        window.alert(successMessage);
+      } else {
+        Alert.alert('Success', successMessage);
+      }
     } catch (err) {
-      Alert.alert('Error', 'Unexpected error. Try again.');
+      const errorMessage = 'Unexpected error. Try again.';
+      if (Platform.OS === 'web') {
+        window.alert(errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -480,7 +507,9 @@ export default function SignUpScreen() {
             <View style={styles.avatarSection}>
               <Text style={styles.sectionTitle}>Choose Your Avatar</Text>
               <View style={styles.avatarGrid}>
-                {AVATAR_OPTIONS.map((a) => {
+                {/* Row 1: First 3 avatars */}
+                <View style={styles.avatarRow}>
+                {AVATAR_OPTIONS.slice(0, 3).map((a) => {
                   const avatarImage = getAvatarImage(a.filename);
                   return (
                     <Pressable
@@ -501,6 +530,31 @@ export default function SignUpScreen() {
                     </Pressable>
                   );
                 })}
+                </View>
+                {/* Row 2: Last 3 avatars */}
+                <View style={styles.avatarRow}>
+                {AVATAR_OPTIONS.slice(3, 6).map((a) => {
+                  const avatarImage = getAvatarImage(a.filename);
+                  return (
+                    <Pressable
+                      key={a.id}
+                      style={[
+                        styles.avatarOption,
+                        selectedAvatar === a.filename && styles.avatarSelected,
+                      ]}
+                      onPress={() => setSelectedAvatar(a.filename)}
+                    >
+                      {avatarImage ? (
+                        <Image source={avatarImage} style={styles.avatarImage} />
+                      ) : (
+                        <View style={styles.avatarPlaceholder}>
+                          <Text style={styles.avatarPlaceholderText}>?</Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+                </View>
               </View>
             </View>
 
@@ -512,6 +566,7 @@ export default function SignUpScreen() {
               onSelect={setCountry}
               placeholder="Select your country"
               required
+              searchable
             />
             {/* Email */}
             <View style={styles.inputGroup}>

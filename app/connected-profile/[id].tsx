@@ -429,7 +429,7 @@ export default function ConnectedProfileScreen() {
           )}
         </View>
 
-        {/* Photo Gallery - Only show if user has approved photo request */}
+{/* Photo Gallery - Only show if user has approved photo request */}
         {canViewPhotos && (user.full_photo || user.passport_photo) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Photos</Text>
@@ -451,6 +451,17 @@ export default function ConnectedProfileScreen() {
                 </View>
               )}
             </View>
+            {/* View Full Gallery Button */}
+            <Pressable
+              style={styles.viewGalleryButton}
+              onPress={() => router.push({
+                pathname: '/photo-gallery' as any,
+                params: { userId: user.id, isOwnProfile: 'false' },
+              } as any)}
+            >
+              <IconSymbol name="photo.on.rectangle.angled" size={20} color={colors.card} />
+              <Text style={styles.viewGalleryButtonText}>View Full Gallery</Text>
+            </Pressable>
           </View>
         )}
 
@@ -715,11 +726,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.card,
   },
-  requestPhotosHint: {
+requestPhotosHint: {
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
+  },
+  viewGalleryButton: {
+    backgroundColor: colors.success,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+  },
+  viewGalleryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.card,
   },
   bio: {
     fontSize: 16,

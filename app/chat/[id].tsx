@@ -180,14 +180,36 @@ export default function ChatScreen() {
       // Check blocked status
       await checkBlockedStatus();
 
-      // Fetch other user details
-      const { data: userData, error: userDataError } = await (supabase as any)
+      // Fetch other user details - try auth_id first, then id
+      let userData: any = null;
+      const { data: userByAuth, error: userByAuthError } = await (supabase as any)
         .from('users')
         .select('id, first_name, avatar, gender, online_status')
-        .eq('id', id)
+        .eq('auth_id', id)
         .single();
 
-      if (userDataError) throw userDataError;
+      if (!userByAuthError && userByAuth) {
+        userData = userByAuth;
+      } else {
+        // Try querying by database id
+        const { data: userById, error: userByIdError } = await (supabase as any)
+          .from('users')
+          .select('id, first_name, avatar, gender, online_status')
+          .eq('id', id)
+          .single();
+        
+        if (!userByIdError && userById) {
+          userData = userById;
+        }
+      }
+
+      if (!userData) {
+        console.error('User not found for id:', id);
+        Alert.alert('Error', 'User not found. The user may no longer exist.');
+        router.back();
+        return;
+      }
+      
       setOtherUser(userData);
       setIsOtherUserOnline(userData.online_status || false);
 
@@ -222,11 +244,18 @@ export default function ChatScreen() {
   }, [id, checkBlockedStatus]);
 
   useEffect(() => {
+    let mounted = true;
+    
+    // Fetch messages when component mounts or id changes
     fetchMessages();
+    
+    // Use dynamic channel names based on chat ID to avoid conflicts
+    const messagesChannelName = `messages:${id}`;
+    const blockedChannelName = `blocked:${id}`;
     
     // Subscribe to new messages
     const channel = supabase
-      .channel('messages')
+      .channel(messagesChannelName)
       .on(
         'postgres_changes',
         {
@@ -236,6 +265,7 @@ export default function ChatScreen() {
           filter: `receiver_id=eq.${currentUserId}`,
         },
         (payload) => {
+          if (!mounted) return;
           console.log('New message received:', payload);
           if (payload.new.sender_id === id) {
             setMessages((prev) => [...prev, payload.new as Message]);
@@ -249,7 +279,7 @@ export default function ChatScreen() {
 
     // Subscribe to blocked status changes
     const blockedChannel = supabase
-      .channel('blocked_status')
+      .channel(blockedChannelName)
       .on(
         'postgres_changes',
         {
@@ -259,6 +289,7 @@ export default function ChatScreen() {
           filter: `blocker_id=eq.${user.id}`,
         },
         () => {
+          if (!mounted) return;
           checkBlockedStatus();
         }
       )
@@ -271,6 +302,7 @@ export default function ChatScreen() {
           filter: `blocked_id=eq.${user.id}`,
         },
         () => {
+          if (!mounted) return;
           checkBlockedStatus();
         }
       )
@@ -283,6 +315,7 @@ export default function ChatScreen() {
           filter: `blocker_id=eq.${id}`,
         },
         () => {
+          if (!mounted) return;
           checkBlockedStatus();
         }
       )
@@ -295,6 +328,7 @@ export default function ChatScreen() {
           filter: `blocked_id=eq.${id}`,
         },
         () => {
+          if (!mounted) return;
           checkBlockedStatus();
         }
       )
@@ -302,6 +336,7 @@ export default function ChatScreen() {
 
 
     return () => {
+      mounted = false;
       supabase.removeChannel(channel);
       supabase.removeChannel(blockedChannel);
       // Cleanup notification sound
@@ -309,7 +344,7 @@ export default function ChatScreen() {
         notificationSoundRef.current.unloadAsync();
       }
     };
-  }, [id, currentUserId, fetchMessages]);
+  }, [id, currentUserId, user?.id, checkBlockedStatus]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || !user || sending) return;
@@ -427,7 +462,8 @@ export default function ChatScreen() {
       });
 
       if (!result.canceled) {
-        await uploadMedia(result.assets[0].uri, 'document');
+        const asset = result.assets[0];
+        await uploadMedia(asset.uri, 'document', asset.name ?? undefined, asset.mimeType ?? undefined);
       }
       setShowMediaPicker(false);
     } catch (error) {
@@ -436,90 +472,154 @@ export default function ChatScreen() {
     }
   };
 
-  const uploadMedia = async (uri: string, type: 'image' | 'document') => {
-    if (!currentUserId) return;
+  const uploadMedia = async (
+    uri: string,
+    type: 'image' | 'document',
+    originalName?: string,
+    mimeTypeHint?: string,
+  ) => {
+    if (!user) return;
 
     try {
+      // Check blocked status before uploading media
+      const { data: blockedCheck } = await (supabase as any)
+        .from('blocked_users')
+        .select('id')
+        .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${id}),and(blocker_id.eq.${id},blocked_id.eq.${user.id})`)
+        .maybeSingle();
+
+      if (blockedCheck) {
+        Alert.alert('Cannot Send Media', 'You cannot send messages to this user.');
+        return;
+      }
+
       setSending(true);
-      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      // ─── Derive content type & extension ─────────────────────────────────
+      // React Native's fetch polyfill does NOT implement blob.arrayBuffer()
+      // reliably on iOS/Android — use FormData with a { uri, name, type }
+      // object instead, which the RN networking layer handles natively.
+      let contentType: string;
+      let fileExtension: string;
+
+      if (type === 'image') {
+        const uriExt = uri.split('.').pop()?.toLowerCase();
+        fileExtension = uriExt === 'png' ? 'png' : 'jpg';
+        contentType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+      } else {
+        // Use the mimeType supplied by DocumentPicker when available
+        contentType = mimeTypeHint || 'application/octet-stream';
+        if (originalName) {
+          fileExtension = originalName.split('.').pop()?.toLowerCase() || 'bin';
+        } else if (contentType === 'application/pdf') {
+          fileExtension = 'pdf';
+        } else {
+          fileExtension = 'bin';
+        }
+      }
+
       // Generate unique filename with proper extension
       const timestamp = Date.now();
       const randomId = Math.random().toString(36).substring(7);
-      const fileExtension = type === 'image' ? 'jpg' : 'pdf';
-      const fileName = `chat_media_${currentUserId}_${timestamp}_${randomId}.${fileExtension}`;
-      const filePath = `messages/${type}/${fileName}`;
-      
-      // Fetch the file as blob for upload. Read the response once.
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      // Convert blob to ArrayBuffer safely (don't read response twice)
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      
-      // Upload to Supabase Storage using the 'media' bucket
-      const { data: uploadData, error: uploadError } = await (supabase as any)
+      const fileName = `chat_media_${timestamp}_${randomId}.${fileExtension}`;
+
+      // ✅ Path must start with user.id/ to satisfy the storage RLS policy
+      // (same pattern used by profile-photos bucket — see photo-gallery.tsx)
+      const filePath = `${user.id}/messages/${type}/${fileName}`;
+
+      // ─── Build the upload body in a platform-safe way ────────────────────
+      // • Web  : FormData { uri, name, type } plain-objects are NOT real Files
+      //          in a browser context — fetch the URI as a Blob instead.
+      // • Native: fetch(file://) blobs lack arrayBuffer(); FormData with the
+      //          RN-native { uri, name, type } object is the correct pattern.
+      let uploadBody: Blob | FormData;
+
+      if (Platform.OS === 'web') {
+        // On web, ImagePicker/DocumentPicker return blob:// or data: URIs that
+        // the browser can fetch natively.
+        const fetchResponse = await fetch(uri);
+        uploadBody = await fetchResponse.blob();
+      } else {
+        // On iOS / Android the RN networking layer resolves file:// URIs inside
+        // FormData objects natively — no manual file reading required.
+        const formData = new FormData();
+        formData.append('file', {
+          uri,
+          name: originalName || fileName,
+          type: contentType,
+        } as any);
+        uploadBody = formData;
+      }
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await (supabase as any)
         .storage
         .from('media')
-        .upload(filePath, uint8Array, {
-          contentType: type === 'image' ? 'image/jpeg' : 'application/pdf',
-          upsert: false
+        .upload(filePath, uploadBody, {
+          contentType,
+          upsert: false,
         });
 
       if (uploadError) {
         console.error('Storage upload error:', uploadError);
-        
-        // Handle different types of upload errors
+
         if (uploadError.message.includes('bucket')) {
-          throw new Error('Storage bucket not found. Please contact support.');
-        } else if (uploadError.message.includes('auth')) {
-          throw new Error('Authentication required for media upload.');
+          throw new Error('Media storage not configured. Please contact support.');
+        } else if (uploadError.message.includes('auth') || uploadError.message.includes('security policy')) {
+          throw new Error('Please log in again to send media.');
+        } else if (uploadError.message.includes('size')) {
+          throw new Error('File is too large. Maximum file size is 10MB.');
         } else {
           throw new Error('Failed to upload media. Please try again.');
         }
       }
 
-      // Get public URL from Supabase Storage
-      const { data: urlData, error: urlError } = await (supabase as any)
+      // Get public URL
+      const { data: urlData } = await (supabase as any)
         .storage
         .from('media')
         .getPublicUrl(filePath);
 
-      if (urlError) {
-        console.error('Error getting public URL:', urlError);
-        throw new Error('Failed to get media URL.');
-      }
-
       const mediaUrl = urlData.publicUrl;
 
       const messageData = {
-        sender_id: currentUserId,
+        sender_id: user.id,
         receiver_id: id,
         content: type === 'image' ? '[Image]' : '[Document]',
         media_type: type,
         media_url: mediaUrl,
         status: 'sent',
+        is_deleted: false,
       };
 
       const { data, error } = await (supabase as any)
         .from('messages')
-        .insert({ ...messageData, is_deleted: false })
+        .insert(messageData)
         .select()
         .single();
 
       if (error) throw error;
 
       setMessages((prev) => [...prev, data]);
-      console.log('Media message sent:', data);
+      console.log('Media message sent successfully:', data.id);
       scrollToBottom();
-    } catch (error) {
+      
+    } catch (error: any) {
       console.error('Error uploading media:', error);
-      Alert.alert('Error', 'Failed to send media');
+      Alert.alert('Error', error.message || 'Failed to send media');
     } finally {
       setSending(false);
     }
   };
 
   const handleVoiceCall = async () => {
+    // Check if running on web platform
+    if (Platform.OS === 'web') {
+      window.alert('Voice and Video calls are not supported on web platform. Please use the mobile app for calling features.');
+      return;
+    }
+    
     // Check if user is online first
     if (!otherUser?.online_status) {
       Alert.alert(
@@ -558,6 +658,12 @@ export default function ChatScreen() {
   };
 
   const handleVideoCall = async () => {
+    // Check if running on web platform
+    if (Platform.OS === 'web') {
+      window.alert('Voice and Video calls are not supported on web platform. Please use the mobile app for calling features.');
+      return;
+    }
+    
     // Check if user is online first
     if (!otherUser?.online_status) {
       Alert.alert(
@@ -919,15 +1025,15 @@ export default function ChatScreen() {
                         >
                           {formatTime(message.created_at)}
                         </Text>
-                        {isCurrentUser && !message.media_type && (
-                          <View style={styles.messageStatus}>
-                            <IconSymbol
-                              name={message.status === 'read' ? 'checkmark.circle.fill' : 'checkmark'}
-                              size={14}
-                              color={message.status === 'read' ? colors.success : colors.textSecondary}
-                            />
-                          </View>
-                        )}
+                     {isCurrentUser && (
+                       <View style={styles.messageStatus}>
+                         <IconSymbol
+                           name={message.status === 'read' ? 'checkmark.circle.fill' : 'checkmark'}
+                           size={14}
+                           color={message.status === 'read' ? colors.success : colors.textSecondary}
+                         />
+                       </View>
+                     )}
                       </View>
                     )}
                   </Pressable>

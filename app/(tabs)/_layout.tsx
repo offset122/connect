@@ -1,23 +1,21 @@
 
 import React from 'react';
-import { Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 
 export default function TabLayout() {
-  // Define the tabs configuration
   const tabs: TabBarItem[] = [
     {
       name: '(home)',
       route: '/(tabs)/(home)/',
       icon: 'heart.fill',
-      label: 'Discover',
+      label: 'Members',
     },
     {
       name: 'connections',
       route: '/(tabs)/connections',
       icon: 'person.2.fill',
-      label: 'Connections',
+      label: 'Requests',
       showBadge: true,
       badgeType: 'connections',
     },
@@ -25,18 +23,11 @@ export default function TabLayout() {
       name: 'messages',
       route: '/(tabs)/messages',
       icon: 'message.fill',
-      label: 'Messages',
+      label: 'Inbox',
       showBadge: true,
       badgeType: 'messages',
     },
-    {
-      name: 'notifications',
-      route: '/(tabs)/notifications',
-      icon: 'bell.fill',
-      label: 'Notifications',
-      showBadge: true,
-      badgeType: 'notifications',
-    },
+    
     {
       name: 'profile',
       route: '/(tabs)/profile',
