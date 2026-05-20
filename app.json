@@ -115,11 +115,11 @@
     },
     "extra": {
       "router": {},
+      "callbackUrl": "https://dbvsexpcrojtnriqfbwa.supabase.co/functions/v1/paystack-callback",
       "eas": {
-        "projectId": "92edbd9f-d847-4623-bc35-40c92229cf26"
-      },
-      "callbackUrl": "https://dbvsexpcrojtnriqfbwa.supabase.co/functions/v1/paystack-callback"
+        "projectId": "4bf6247a-fa80-4a8d-b521-b180a4bfd2bc"
+      }
     },
-    "owner": "offset11"
+    "owner": "offsetdeveloper"
   }
 }
