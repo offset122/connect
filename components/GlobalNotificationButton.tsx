@@ -17,6 +17,7 @@ const HIDDEN_SCREENS = new Set([
   '/registration',
   '/reset-password',
   '/email-confirmation',
+  '/payment-new',
 ]);
 
 export default function GlobalNotificationButton() {

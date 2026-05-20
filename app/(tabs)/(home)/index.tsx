@@ -425,6 +425,20 @@ if (profileError || !currentProfile) {
 
       if (error) throw error;
 
+      // Notify the recipient about the connection request
+      const senderName = currentUserProfile.first_name || 'Someone';
+      await (supabase as any)
+        .from('notifications')
+        .insert({
+          user_id: targetUser.id,
+          title: 'New Connection Request 💌',
+          body: `${senderName} wants to connect with you! Check your requests to accept or decline.`,
+          notification_type: 'connection_request',
+          type: 'connection',
+          related_user_id: currentUserProfile.id,
+          read: false,
+        });
+
       Alert.alert('Success', `Connection request sent to ${targetUser.name}!`);
       handleConnectionUpdate(targetUser.id, 'pending');
 
@@ -533,6 +547,20 @@ if (profileError || !currentProfile) {
                   });
 
                 if (error) throw error;
+
+                // Notify the target user
+                await (supabase as any)
+                  .from('notifications')
+                  .insert({
+                    user_id: targetUser.id,
+                    title: 'Phone Number Request 📱',
+                    body: `${currentUserProfile.first_name || 'Someone'} is requesting your phone number`,
+                    notification_type: 'phone_request',
+                    type: 'phone_request',
+                    related_user_id: currentUserProfile.id,
+                    read: false,
+                  });
+
                 Alert.alert('Request Sent!', `Phone number request sent to ${targetUser.name}`);
               } catch (error: any) {
                 console.error('Error sending phone request:', error);
@@ -1297,11 +1325,10 @@ const userData = userRows?.[0] ?? null;
                     </View>
                   )}
 
-                  {/* 3. ACTION BLOCK - Modern Button Row */}
+                  {/* 3. ACTION BLOCK */}
                   <View style={styles.actionsBlock}>
                   {user.connectionStatus === 'none' && (
                     <View style={styles.modernActionRow}>
-                      {/* Connect Button - Primary */}
                       <Pressable 
                         style={styles.connectButton}
                         onPress={(e) => {
@@ -1309,39 +1336,33 @@ const userData = userRows?.[0] ?? null;
                           handleConnect(user);
                         }}
                       >
-                        <IconSymbol name="person.badge.plus.fill" size={18} color="#FFFFFF" />
-                        <Text style={styles.connectButtonText}>Connect</Text>
+                        <IconSymbol name="person.badge.plus.fill" size={15} color="#FFFFFF" />
+                        <Text style={styles.connectButtonText} numberOfLines={1}>Connect</Text>
                       </Pressable>
-
-                       {/* Request Number Button - Secondary using proper component */}
-                       <PhoneNumberRequest
-                         targetUserName={user.name}
-                         targetUserId={user.id}
-                         compact={true}
-                       />
+                      <PhoneNumberRequest
+                        targetUserName={user.name}
+                        targetUserId={user.id}
+                        compact={true}
+                      />
                     </View>
                   )}
 
                   {user.connectionStatus === 'pending' && (
                     <View style={styles.modernActionRow}>
-                      {/* Sent Status for Connect */}
                       <View style={styles.sentContainer}>
-                        <IconSymbol name="checkmark.circle.fill" size={18} color={colors.success} />
-                        <Text style={styles.sentText}>Request Sent</Text>
+                        <IconSymbol name="checkmark.circle.fill" size={15} color={colors.success} />
+                        <Text style={styles.sentText} numberOfLines={1}>Request Sent</Text>
                       </View>
-
-                       {/* Request Number Button - Still clickable using proper component */}
-                       <PhoneNumberRequest
-                         targetUserName={user.name}
-                         targetUserId={user.id}
-                         compact={true}
-                       />
+                      <PhoneNumberRequest
+                        targetUserName={user.name}
+                        targetUserId={user.id}
+                        compact={true}
+                      />
                     </View>
                   )}
 
                   {user.connectionStatus === 'accepted' && (
                     <View style={styles.modernActionRow}>
-                      {/* Message Button */}
                       <Pressable 
                         style={styles.messageButton}
                         onPress={(e) => {
@@ -1349,23 +1370,21 @@ const userData = userRows?.[0] ?? null;
                           handleMessage(user);
                         }}
                       >
-                        <IconSymbol name="message.fill" size={18} color="#FFFFFF" />
-                        <Text style={styles.connectButtonText}>Message</Text>
+                        <IconSymbol name="message.fill" size={15} color="#FFFFFF" />
+                        <Text style={styles.connectButtonText} numberOfLines={1}>Message</Text>
                       </Pressable>
-
-                       {/* Request Number Button using proper component */}
-                       <PhoneNumberRequest
-                         targetUserName={user.name}
-                         targetUserId={user.id}
-                         compact={true}
-                       />
+                      <PhoneNumberRequest
+                        targetUserName={user.name}
+                        targetUserId={user.id}
+                        compact={true}
+                      />
                     </View>
                   )}
 
                   {user.connectionStatus === 'rejected' && (
                     <View style={styles.rejectedContainer}>
-                      <IconSymbol name="xmark.circle.fill" size={20} color={colors.textSecondary} />
-                      <Text style={styles.rejectedText}>Request Declined</Text>
+                      <IconSymbol name="xmark.circle.fill" size={16} color={colors.textSecondary} />
+                      <Text style={styles.rejectedText} numberOfLines={1}>Request Declined</Text>
                     </View>
                   )}
                 </View>
@@ -2121,25 +2140,35 @@ const styles = StyleSheet.create({
 
   // Action Block - Modern Design
   actionsBlock: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
     backgroundColor: colors.card,
   },
   modernActionRow: {
     flexDirection: 'row',
-    gap: spacing.md,
     alignItems: 'center',
+    gap: spacing.xs,
   },
-  
-  // Connect Button - Primary (Gradient-style)
+  modernActionColumn: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+  },
+  phoneButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+
+  // Connect Button - flex:1 so it fills space beside the phone icon
   connectButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 5,
     backgroundColor: colors.secondary,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.lg,
     shadowColor: colors.secondary,
     shadowOffset: { width: 0, height: 3 },
@@ -2148,22 +2177,22 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   connectButtonText: {
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
 
-  // Message Button - Primary
+  // Message Button
   messageButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 5,
     backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.lg,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 3 },
@@ -2195,10 +2224,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 5,
     backgroundColor: colors.background,
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.lg,
     borderWidth: 2,
     borderColor: colors.success + '40',

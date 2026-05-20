@@ -601,13 +601,13 @@ export default function PhoneNumberRequest({
         {loading || sending ? (
           <ActivityIndicator size="small" color={colors.primary} />
         ) : requestStatus === 'pending' ? (
-          <IconSymbol name="clock.fill" size={18} color="#FF9500" />
+          <IconSymbol name="clock.fill" size={13} color="#FF9500" />
         ) : requestStatus === 'approved' ? (
-          <IconSymbol name="checkmark.circle.fill" size={18} color="#34C759" />
+          <IconSymbol name="checkmark.circle.fill" size={13} color="#34C759" />
         ) : requestStatus === 'declined' ? (
-          <IconSymbol name="xmark.circle.fill" size={18} color="#FF3B30" />
+          <IconSymbol name="xmark.circle.fill" size={13} color="#FF3B30" />
         ) : (
-          <IconSymbol name="phone.fill" size={18} color={colors.primary} />
+          <IconSymbol name="phone.fill" size={13} color={colors.primary} />
         )}
       </TouchableOpacity>
     );
@@ -655,22 +655,21 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     borderRadius: 12,
     padding: 16,
-    marginTop: 16,
     alignItems: 'center',
   },
   compactButton: {
-    width: 48,
-    height: 48,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
-    borderRadius: 12,
-    borderWidth: 2,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: colors.primary,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
   },
   requestButtonDisabled: {
