@@ -95,16 +95,32 @@ export default function PhotoGalleryScreen() {
 
       // ✅ Check if current user has approved photo access when viewing other profiles
       if (!isOwnProfile && user) {
-        const { data: accessCheck } = await supabase
+        // Resolve current user's DB row id (photo_requests uses DB ids not auth UUIDs)
+        const { data: currentUserRow } = await (supabase as any)
+          .from('users')
+          .select('id')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+
+        const currentDbId = currentUserRow?.id;
+        if (!currentDbId) {
+          setPhotos({ fullPhoto: undefined, passportPhoto: undefined });
+          setLoading(false);
+          return;
+        }
+
+        // Check both directions — either user could have requested the other's photos
+        const { data: accessCheck } = await (supabase as any)
           .from('photo_requests')
           .select('request_status')
-          .eq('requester_id', user.id)
+          .eq('requester_id', currentDbId)
           .eq('target_user_id', targetUserId)
           .eq('request_status', 'approved')
           .maybeSingle();
 
         if (!accessCheck) {
           setPhotos({ fullPhoto: undefined, passportPhoto: undefined });
+          Alert.alert('Access Denied', 'You do not have approved access to view these photos.');
           setLoading(false);
           return;
         }

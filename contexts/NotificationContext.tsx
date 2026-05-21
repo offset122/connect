@@ -3,6 +3,7 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { notificationService } from '@/utils/notificationService';
+import { inAppNotificationEmitter } from '@/utils/inAppNotificationEmitter';
 
 const SUPABASE_URL = "https://dbvsexpcrojtnriqfbwa.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRidnNleHBjcm9qdG5yaXFmYndhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE0MzQyMzYsImV4cCI6MjA3NzAxMDIzNn0.e3bGdg7pvM0r6eF82oTlhJYRuuQcYnvYva_232gj2y4";
@@ -76,30 +77,44 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
+          console.log('[NotificationContext] INSERT received for user:', user.id, 'type:', payload.new?.type);
           // Update unread badge count
           fetchUnreadCount();
 
           if (Platform.OS !== 'web') {
             const notif = payload.new;
+            const isAppActive = appStateRef.current === 'active';
 
-            // Fire a local scheduled notification — this triggers
-            // InAppNotificationBanner (foreground) or OS tray (background)
-            notificationService.showAppNotification({
-              title: notif.title || 'New Notification',
-              body: notif.body || notif.description || '',
-              type: notif.type || 'system',
-              data: {
-                notificationId: notif.id,
-                related_user_id: notif.related_user_id,
-              },
-            }).then((notifId) => {
-              if (!notifId) {
-                console.warn('[NotificationContext] showAppNotification returned null — permissions may not be granted');
-              }
-            });
+            console.log('[NotificationContext] App state:', appStateRef.current, '— showing notification:', notif.title);
 
-            // Also call the edge function for true background push
-            // (when app is fully killed, real-time subscription is dead)
+            if (isAppActive) {
+              // App is in foreground — emit directly to the banner (no OS scheduling needed)
+              inAppNotificationEmitter.emit({
+                id: notif.id ?? String(Date.now()),
+                title: notif.title || 'New Notification',
+                body: notif.body || notif.description || '',
+                type: notif.type || 'system',
+                data: {
+                  notificationId: notif.id,
+                  related_user_id: notif.related_user_id,
+                },
+              });
+            } else {
+              // App is backgrounded — schedule a real OS notification
+              notificationService.showAppNotification({
+                title: notif.title || 'New Notification',
+                body: notif.body || notif.description || '',
+                type: notif.type || 'system',
+                data: {
+                  notificationId: notif.id,
+                  related_user_id: notif.related_user_id,
+                },
+              }).then((notifId) => {
+                console.log('[NotificationContext] OS notification scheduled:', notifId);
+              });
+            }
+
+            // Always call edge function — handles fully-killed app case
             fetch(`${SUPABASE_URL}/functions/v1/send-push-notification`, {
               method: 'POST',
               headers: {
@@ -107,9 +122,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
               },
               body: JSON.stringify({ notification: notif }),
-            }).catch(() => {
-              // Non-critical — local push already fired above
-            });
+            }).catch(() => {});
           }
         }
       )
@@ -137,7 +150,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           fetchUnreadCount();
         }
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        console.log('[NotificationContext] Realtime subscription status:', status, 'for user:', user.id);
+      });
 
     return () => {
       subscription.unsubscribe();

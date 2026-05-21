@@ -20,6 +20,7 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { borderRadius, colors, shadows } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { inAppNotificationEmitter } from '@/utils/inAppNotificationEmitter';
 
 interface BannerData {
   id: string;
@@ -87,18 +88,29 @@ export default function InAppNotificationBanner() {
     timerRef.current = setTimeout(dismiss, DISPLAY_DURATION);
   };
 
-  // Listen for notifications received while app is active
+  // Listen for direct emitter events (foreground — from NotificationContext)
+  useEffect(() => {
+    if (!user || Platform.OS === 'web') return;
+
+    const unsub = inAppNotificationEmitter.subscribe((payload) => {
+      if (payload.type === 'incoming_call') return;
+      show(payload);
+    });
+
+    return () => unsub();
+  }, [user]);
+
+  // Listen for OS notification events (background → foreground transition)
   useEffect(() => {
     if (!user || Platform.OS === 'web') return;
 
     const sub = Notifications.addNotificationReceivedListener((received) => {
-      // Only show in-app banner when user is actively using the app
+      // Only show when app is active (foreground)
       if (appStateRef.current !== 'active') return;
 
       const notifData = received.request.content.data as Record<string, any>;
       const type: string = notifData?.type ?? 'system';
 
-      // Calls have their own dedicated UI — skip
       if (type === 'incoming_call') return;
 
       const title = received.request.content.title ?? 'New Notification';

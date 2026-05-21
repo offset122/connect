@@ -102,6 +102,7 @@ export default function ProfileViewScreen() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [photoRequestStatus, setPhotoRequestStatus] = useState<'none' | 'pending' | 'approved' | 'declined'>('none');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('none');
   const [sendingPhotoRequest, setSendingPhotoRequest] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
 
@@ -158,14 +159,14 @@ export default function ProfileViewScreen() {
 
     try {
       if (action === 'connect') {
-        const { error } = await supabase.from('connections').insert({
+        const { error } = await (supabase as any).from('connections').upsert({
           requester_id: currentUserId,
           recipient_id: userProfile.id,
           status: 'pending',
-        });
+        }, { onConflict: 'requester_id,recipient_id', ignoreDuplicates: true });
         if (error) throw error;
+        setConnectionStatus('pending');
         Alert.alert('Success', `Connection request sent to ${displayName}!`);
-        safeBack(router);
       } else if (action === 'accept' || action === 'decline') {
         const status = action === 'accept' ? 'accepted' : 'rejected';
         const { error } = await supabase.from('connections')
@@ -173,6 +174,7 @@ export default function ProfileViewScreen() {
           .eq('requester_id', userProfile.id)
           .eq('recipient_id', currentUserId);
         if (error) throw error;
+        setConnectionStatus(status as ConnectionStatus);
         Alert.alert('Success', `${displayName}'s request was ${status}.`);
         safeBack(router);
       }
@@ -265,10 +267,9 @@ export default function ProfileViewScreen() {
       const { error: notificationError } = await supabase
         .from('notifications')
         .insert({
-          user_id: userProfile.id,
+          user_id: userProfile.auth_id,   // auth UUID so NotificationContext picks it up
           title: 'New Photo Request 📸',
           body: `${currentUserProfile.first_name} wants to see your photos`,
-          notification_type: 'photo_request',
           type: 'photo_request',
           related_user_id: currentUserProfile.id,
           read: false,
@@ -400,7 +401,7 @@ export default function ProfileViewScreen() {
 
       if (!currentUserProfile) return;
 
-      // Check if there's already a photo request
+      // Check photo request status
       const { data: existingRequest } = await supabase
         .from('photo_requests')
         .select('id, request_status')
@@ -413,8 +414,24 @@ export default function ProfileViewScreen() {
       } else {
         setPhotoRequestStatus('none');
       }
+
+      // Check connection status
+      const { data: connData } = await (supabase as any)
+        .from('connections')
+        .select('status, requester_id')
+        .or(
+          `and(requester_id.eq.${currentUserProfile.id},recipient_id.eq.${userProfile.id}),` +
+          `and(requester_id.eq.${userProfile.id},recipient_id.eq.${currentUserProfile.id})`
+        )
+        .maybeSingle();
+
+      if (connData) {
+        setConnectionStatus(connData.status as ConnectionStatus);
+      } else {
+        setConnectionStatus('none');
+      }
     } catch (error) {
-      console.error('Error checking photo request:', error);
+      console.error('Error checking statuses:', error);
     }
   };
 
@@ -766,8 +783,18 @@ export default function ProfileViewScreen() {
           (photoRequestStatus === 'pending' || sendingPhotoRequest) && styles.photoRequestButtonPending,
           photoRequestStatus === 'approved' && styles.photoRequestButtonApproved
         ]}
-        onPress={handleRequestPhoto}
-        disabled={photoRequestStatus !== 'none' || sendingPhotoRequest}
+        onPress={() => {
+          if (photoRequestStatus === 'approved') {
+            // Navigate to their photo gallery
+            router.push({
+              pathname: '/photo-gallery' as any,
+              params: { userId: userProfile.id, isOwnProfile: 'false' },
+            } as any);
+          } else {
+            handleRequestPhoto();
+          }
+        }}
+        disabled={(photoRequestStatus === 'pending' || sendingPhotoRequest)}
       >
         {sendingPhotoRequest ? (
           <>
@@ -795,7 +822,7 @@ export default function ProfileViewScreen() {
       <ConnectionActions
         targetUserName={displayName}
         targetUserId={userProfile.id}
-        connectionStatus={'none'}
+        connectionStatus={connectionStatus}
         onConnect={() => handleConnectionAction('connect')}
         onAccept={() => handleConnectionAction('accept')}
         onDecline={() => handleConnectionAction('decline')}
