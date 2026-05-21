@@ -2,6 +2,7 @@
 // Initializes notification service and handles navigation on notification tap.
 
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { notificationService } from '@/utils/notificationService';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
@@ -14,22 +15,49 @@ export function NotificationInitializer() {
   useEffect(() => {
     if (!user) {
       notificationService.destroy();
-      Notifications.setNotificationHandler(null);
+      // Don't clear the notification handler — it's set at module level
+      // and clearing it breaks notifications for the next login session
       return;
     }
 
+    // Re-set the notification handler in case it was cleared
+    if (Platform.OS !== 'web') {
+      Notifications.setNotificationHandler({
+        handleNotification: async (notification) => {
+          const data = notification.request.content.data;
+          const isCallNotification = data?.type === 'incoming_call';
+          return {
+            shouldShowAlert: true,
+            shouldPlaySound: isCallNotification || data?.type === 'message',
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+            priority: isCallNotification
+              ? Notifications.AndroidNotificationPriority.MAX
+              : Notifications.AndroidNotificationPriority.HIGH,
+          };
+        },
+      });
+    }
+
     // Initialize service (requests permissions + creates channels)
-    notificationService.init().then((granted) => {
-      if (granted) {
-        // Register device push token and save to DB so remote pushes work
-        // even when the app is fully closed
-        notificationService.registerPushToken(supabase, user.id).catch((err) => {
-          console.warn('Push token registration failed:', err);
-        });
-      }
-    }).catch((error) => {
-      console.error('Failed to initialize notification service:', error);
-    });
+    // Guard against double-init (StrictMode / fast refresh can mount twice)
+    if (!notificationService.isInitialized) {
+      notificationService.init().then((granted) => {
+        if (granted) {
+          notificationService.registerPushToken(supabase, user.id).catch((err) => {
+            console.warn('Push token registration failed:', err);
+          });
+        }
+      }).catch((error) => {
+        console.error('Failed to initialize notification service:', error);
+      });
+    } else {
+      // Already initialized — just refresh the push token
+      notificationService.registerPushToken(supabase, user.id).catch((err) => {
+        console.warn('Push token registration failed:', err);
+      });
+    }
 
     // Handle notification tap — navigate to the appropriate screen
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {

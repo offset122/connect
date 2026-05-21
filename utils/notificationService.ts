@@ -48,14 +48,16 @@ class NotificationServiceClass {
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
+      console.log('[NotificationService] init() — existing permission status:', existingStatus);
 
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
+        console.log('[NotificationService] Permission after request:', finalStatus);
       }
 
       if (finalStatus !== 'granted') {
-        console.warn('Notification permission not granted');
+        console.warn('[NotificationService] Permission not granted — notifications disabled');
         return false;
       }
 
@@ -117,6 +119,7 @@ class NotificationServiceClass {
 
       this.setupListeners();
       this._isInitialized = true;
+      console.log('[NotificationService] init() complete — notifications ready');
       return true;
     } catch (error) {
       console.error('Error initializing notifications:', error);
@@ -175,10 +178,19 @@ class NotificationServiceClass {
 
     try {
       const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') return null;
+      console.log('[NotificationService] Permission status:', status);
+      if (status !== 'granted') {
+        console.warn('[NotificationService] Notifications not granted — requesting...');
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+        if (newStatus !== 'granted') {
+          console.warn('[NotificationService] Permission denied, cannot show notification');
+          return null;
+        }
+      }
 
       const { title, body, type, data } = params;
       const channelId = this.getChannelId(type);
+      console.log(`[NotificationService] Scheduling notification: "${title}" type=${type} channel=${channelId}`);
 
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {
@@ -191,9 +203,10 @@ class NotificationServiceClass {
         trigger: null, // Show immediately
       });
 
+      console.log('[NotificationService] Notification scheduled, id:', notificationId);
       return notificationId;
     } catch (error) {
-      console.error('Error showing app notification:', error);
+      console.error('[NotificationService] Error showing notification:', error);
       return null;
     }
   }

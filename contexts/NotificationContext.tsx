@@ -79,12 +79,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           // Update unread badge count
           fetchUnreadCount();
 
-          // Fire a local push notification so the OS tray / banner shows up
-          // This handles both background (suspended) and foreground cases.
-          // The InAppNotificationBanner component will intercept the received
-          // event when the app is active and show a nicer in-app toast.
           if (Platform.OS !== 'web') {
             const notif = payload.new;
+
+            // Fire a local scheduled notification — this triggers
+            // InAppNotificationBanner (foreground) or OS tray (background)
             notificationService.showAppNotification({
               title: notif.title || 'New Notification',
               body: notif.body || notif.description || '',
@@ -93,15 +92,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 notificationId: notif.id,
                 related_user_id: notif.related_user_id,
               },
+            }).then((notifId) => {
+              if (!notifId) {
+                console.warn('[NotificationContext] showAppNotification returned null — permissions may not be granted');
+              }
             });
-          }
 
-          // Also trigger the edge function so the recipient gets a push even
-          // when their app is fully closed (the real-time subscription above
-          // only fires when the app is open and the WebSocket is alive).
-          // We call it fire-and-forget — no need to await.
-          if (Platform.OS !== 'web') {
-            const notif = payload.new;
+            // Also call the edge function for true background push
+            // (when app is fully killed, real-time subscription is dead)
             fetch(`${SUPABASE_URL}/functions/v1/send-push-notification`, {
               method: 'POST',
               headers: {

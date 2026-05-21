@@ -46,6 +46,7 @@ type ConnectionStatus = 'none' | 'pending' | 'accepted' | 'rejected';
 
 type User = {
   id: string;
+  auth_id?: string;   // auth UUID — used for notifications and chat routing
   name: string;
   age: number;
   location: string;
@@ -136,6 +137,7 @@ export default function DiscoverScreen() {
         .from('users')
         .select(`
           id,
+          auth_id,
           first_name,
           last_name,
           age,
@@ -223,6 +225,7 @@ export default function DiscoverScreen() {
   const mapUser = useCallback(
     (u: any, connMap: Map<string, ConnectionStatus>): User => ({
       id: u.id,
+      auth_id: u.auth_id,   // auth UUID for notifications
       name: u.first_name || 'Unknown',
       age: u.age || 0,
       location: u.county || u.country_of_residence || 'Unknown',
@@ -411,7 +414,7 @@ export default function DiscoverScreen() {
       await (supabase as any)
         .from('notifications')
         .insert({
-          user_id: targetUser.id,
+          user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'New Connection Request 💌',
           body: `${senderName} wants to connect with you! Check your requests to accept or decline.`,
           notification_type: 'connection_request',
@@ -446,7 +449,7 @@ export default function DiscoverScreen() {
       await (supabase as any)
         .from('notifications')
         .insert({
-          user_id: targetUser.id,
+          user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'Connection Accepted! 🎉',
           body: `${currentUserName} accepted your connection request. You can now message each other!`,
           notification_type: 'connection_accepted',
@@ -481,7 +484,7 @@ export default function DiscoverScreen() {
       await (supabase as any)
         .from('notifications')
         .insert({
-          user_id: targetUser.id,
+          user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'Connection Request Declined',
           body: `${currentUserName} declined your connection request.`,
           notification_type: 'connection_declined',
@@ -533,7 +536,7 @@ export default function DiscoverScreen() {
                 await (supabase as any)
                   .from('notifications')
                   .insert({
-                    user_id: targetUser.id,
+                    user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Phone Number Request 📱',
                     body: `${currentUserProfile.first_name || 'Someone'} is requesting your phone number`,
                     notification_type: 'phone_request',
@@ -609,7 +612,7 @@ const existingRequest = existingRequestRows?.[0] ?? null;
                 await supabase
                   .from('notifications')
                   .insert({
-                    user_id: targetUser.id,
+                    user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Photo Request 📸',
                     body: `${currentUserProfile.first_name || 'Someone'} wants to view your photos`,
                     notification_type: 'photo_request',
@@ -694,7 +697,7 @@ const userData = userRows?.[0] ?? null;
                 await (supabase as any)
                   .from('notifications')
                   .insert({
-                    user_id: targetUser.id,
+                    user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Phone Number Request 📱',
                     body: `${currentUserProfile.first_name || 'Someone'} wants your phone number`,
                     notification_type: 'phone_request',

@@ -184,7 +184,7 @@ export default function ChatScreen() {
       let userData: any = null;
       const { data: userByAuth, error: userByAuthError } = await (supabase as any)
         .from('users')
-        .select('id, first_name, avatar, gender, online_status')
+        .select('id, auth_id, first_name, avatar, gender, online_status')
         .eq('auth_id', id)
         .single();
 
@@ -194,7 +194,7 @@ export default function ChatScreen() {
         // Try querying by database id
         const { data: userById, error: userByIdError } = await (supabase as any)
           .from('users')
-          .select('id, first_name, avatar, gender, online_status')
+          .select('id, auth_id, first_name, avatar, gender, online_status')
           .eq('id', id)
           .single();
         
@@ -391,23 +391,24 @@ export default function ChatScreen() {
       // 1. Triggers NotificationContext real-time subscription → in-app banner (if app is open)
       // 2. Triggers the Supabase webhook → edge function → Expo Push API (if app is closed)
       try {
-        const senderName = otherUser
-          ? `${otherUser.first_name || 'Someone'}`
-          : 'Someone';
+        const senderName = otherUser?.first_name || 'Someone';
+        // Use auth_id so it matches NotificationContext filter (user_id = auth UUID)
+        const recipientAuthId = otherUser?.auth_id ?? id;
+        console.log('[Chat] Inserting notification for recipient auth_id:', recipientAuthId);
         await (supabase as any).from('notifications').insert({
-          user_id: id,                    // recipient's auth UUID (route param)
+          user_id: recipientAuthId,       // MUST be auth UUID — matches NotificationContext filter
           title: `New message from ${senderName} 💬`,
           body: messageContent.length > 80
             ? messageContent.slice(0, 80) + '…'
             : messageContent,
           type: 'message',
           notification_type: 'message',
-          related_user_id: id,            // used for deep-link → /chat/[id]
+          related_user_id: id,            // route param — used for deep-link → /chat/[id]
           read: false,
         });
+        console.log('[Chat] Notification inserted successfully');
       } catch (notifError) {
-        // Non-critical — message was sent, notification is best-effort
-        console.warn('Could not insert message notification:', notifError);
+        console.warn('[Chat] Could not insert message notification:', notifError);
       }
 
       console.log('Message sent successfully:', data);
