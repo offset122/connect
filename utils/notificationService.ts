@@ -4,6 +4,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as Device from 'expo-device';
 
 const isWeb = Platform.OS === 'web';
 
@@ -265,6 +266,74 @@ class NotificationServiceClass {
       await Notifications.dismissNotificationAsync(notificationId);
     } catch (error) {
       console.error('Error canceling notification:', error);
+    }
+  }
+
+  /**
+   * Register device for remote push notifications and save token to Supabase.
+   * Call this after the user logs in and permissions are granted.
+   */
+  async registerPushToken(supabase: any, userId: string): Promise<string | null> {
+    if (isWeb || !Device.isDevice) return null;
+
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') return null;
+
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: '4bf6247a-fa80-4a8d-b521-b180a4bfd2bc', // EAS project ID from app.json
+      });
+
+      const token = tokenData.data;
+      this.expoPushToken = token;
+
+      // Persist to users table so the server/edge function can look it up
+      await supabase
+        .from('users')
+        .update({ expo_push_token: token })
+        .eq('auth_id', userId);
+
+      console.log('Push token registered:', token);
+      return token;
+    } catch (error) {
+      console.warn('Could not register push token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Send a remote push notification via Expo Push API.
+   * Use this when the recipient may have the app closed/killed.
+   * Requires the recipient's expo_push_token stored in the DB.
+   */
+  async sendRemotePush(params: {
+    expoPushToken: string;
+    title: string;
+    body: string;
+    type: string;
+    data?: Record<string, any>;
+  }): Promise<void> {
+    try {
+      const { expoPushToken, title, body, type, data } = params;
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: expoPushToken,
+          title,
+          body,
+          sound: 'default',
+          priority: type === 'message' ? 'high' : 'normal',
+          channelId: this.getChannelId(type),
+          data: { type, ...data },
+        }),
+      });
+    } catch (error) {
+      console.warn('Remote push failed (non-critical):', error);
     }
   }
 

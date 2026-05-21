@@ -155,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .maybeSingle();
           
        const userTimeoutPromise = new Promise((_, reject) => 
-         setTimeout(() => reject(new Error('User query timeout')), 60000)
+         setTimeout(() => reject(new Error('User query timeout')), 8000)
        );
         
         const { data: userData, error: userError } = await Promise.race([userQueryPromise, userTimeoutPromise]) as any;
@@ -291,7 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('User query timeout')), 100000)
+        setTimeout(() => reject(new Error('User query timeout')), 8000)
       );
       
       const { data: userData, error: userError } = await Promise.race([queryPromise, timeoutPromise]) as any;

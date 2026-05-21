@@ -29,6 +29,7 @@
     "android": {
       "package": "com.hannas.connect",
       "versionCode": 98,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logoh.jpg",
         "backgroundColor": "#000000"
@@ -95,6 +96,15 @@
       "expo-font",
       "expo-router",
       "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logoh.jpg",
+          "color": "#000000",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ],
       [
         "expo-camera",
         {

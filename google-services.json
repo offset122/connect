@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "251057523767",
+    "project_id": "sgmonitor-80eeb",
+    "storage_bucket": "sgmonitor-80eeb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:251057523767:android:97e14bf824876418dfc3b2",
+        "android_client_info": {
+          "package_name": "com.example.keycapture"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWulJzEVcFc92KftHiNtmcmWT_LAIAQL0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:251057523767:android:a76963ed97e9943edfc3b2",
+        "android_client_info": {
+          "package_name": "com.hannas.connect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWulJzEVcFc92KftHiNtmcmWT_LAIAQL0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

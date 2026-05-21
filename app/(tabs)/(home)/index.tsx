@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Stack, useRouter } from "expo-router";
 import { ScrollView, StyleSheet, View, Text, Pressable, Platform, ActivityIndicator, Alert, RefreshControl, useWindowDimensions, Image, ImageBackground, TextInput, Modal } from "react-native";
 import { IconSymbol } from "../../../components/IconSymbol";
@@ -57,12 +57,21 @@ type User = {
   connectionStatus?: ConnectionStatus;
 };
 
+// Page size for pagination
+const PAGE_SIZE = 20;
+
 export default function DiscoverScreen() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  // Cache connections so we don't re-fetch on every filter change
+  const [connectionMap, setConnectionMap] = useState<Map<string, ConnectionStatus>>(new Map());
+  const [acceptedIds, setAcceptedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'online' | 'new' | 'kenya' | 'diaspora' | 'men' | 'women'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -117,56 +126,13 @@ export default function DiscoverScreen() {
     ? (width - (40 * 2) - (isLandscape ? 32 : 24)) / (isLandscape ? 4 : 3)
     : (width - (20 * 2) - 16) / 2;
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      // 1. Authenticate User
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication required. Please log in.');
-      }
-      setCurrentUserId(user.id);
-
-      // 2. Fetch Current User Profile
-      const { data: profileRows, error: profileError } = await supabase
-  .from('users')
-  .select('*')
-  .eq('auth_id', user.id)
-  .limit(1);
-
-const currentProfile = profileRows?.[0] ?? null;
-
-if (profileError || !currentProfile) {
-        throw new Error('Profile not found. Please complete registration.');
-      }
-      setCurrentUserProfile(currentProfile);
-
-      // 3. Get Existing Connections and Exclude IDs
-      const { data: connectionsData } = await (supabase as any)
-        .from('connections')
-        .select('requester_id, recipient_id, status')
-        .or(`requester_id.eq.${currentProfile.id},recipient_id.eq.${currentProfile.id}`);
-
-      const excludedIds = new Set<string>([currentProfile.id]);
-      const connectionMap = new Map<string, ConnectionStatus>();
-      
-      connectionsData?.forEach((conn: any) => {
-        const otherId = conn.requester_id === currentProfile.id ? conn.recipient_id : conn.requester_id;
-        
-        // ONLY exclude ACCEPTED connections, leave pending and rejected users visible
-        if (conn.status === 'accepted') {
-          excludedIds.add(otherId);
-        }
-        
-        // Map connection status for display logic
-        connectionMap.set(otherId, conn.status);
-      });
-
-      // 4. Fetch Discoverable Users
-      const excludedIdsArray = Array.from(excludedIds);
-      
-      let query = supabase
+  /**
+   * Build the server-side filtered query based on current filter state.
+   * Returns a Supabase query builder ready to be paginated.
+   */
+  const buildQuery = useCallback(
+    (profile: any, excludedAcceptedIds: string[]) => {
+      let q = (supabase as any)
         .from('users')
         .select(`
           id,
@@ -194,61 +160,137 @@ if (profileError || !currentProfile) {
         `)
         .eq('is_active', true)
         .eq('has_paid', true)
-        .neq('id', currentProfile.id) // Exclude self
+        .not('is_admin', 'is', true)   // handles both false AND null
+        .neq('id', profile.id)
         .not('first_name', 'is', null)
         .not('age', 'is', null)
         .not('gender', 'is', null)
-        .gte('age', 18)
-        .limit(50);
-        
-      if (excludedIdsArray.length > 1) {
-          // Only exclude ACCEPTED connections, keep pending/rejected visible
-          const acceptedOnlyIds = excludedIdsArray.filter(id => id !== currentProfile.id);
-          if (acceptedOnlyIds.length > 0) {
-            query = query.not('id', 'in', `(${acceptedOnlyIds.join(',')})`);
-          }
+        .gte('age', ageRange.min)
+        .lte('age', ageRange.max)
+        .order('created_at', { ascending: false });
+
+      // Exclude accepted connections server-side
+      if (excludedAcceptedIds.length > 0) {
+        q = q.not('id', 'in', `(${excludedAcceptedIds.join(',')})`);
       }
 
-      const { data: usersData, error: usersError } = await query;
+      // ── Server-side filters (only apply if column likely exists) ─────────
+      if (selectedGender) q = q.eq('gender', selectedGender);
+      if (selectedMaritalStatus) q = q.eq('marital_status', selectedMaritalStatus);
+      if (selectedCountry) q = q.eq('country_of_residence', selectedCountry);
+      if (selectedCounty) q = q.eq('county', selectedCounty);
+      if (selectedProfession) q = q.ilike('current_profession', `%${selectedProfession}%`);
+
+      // Category quick-filters
+      if (selectedFilter === 'men') q = q.eq('gender', 'Male');
+      if (selectedFilter === 'women') q = q.eq('gender', 'Female');
+      if (selectedFilter === 'kenya') q = q.eq('country_of_residence', 'Kenya');
+      if (selectedFilter === 'diaspora') q = q.neq('country_of_residence', 'Kenya');
+      if (selectedFilter === 'new') {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        q = q.gte('created_at', sevenDaysAgo);
+      }
+      if (selectedFilter === 'online') {
+        const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        q = q.gte('last_login', fifteenMinAgo);
+      }
+
+      // Text search (name / location / bio)
+      if (searchQuery.trim()) {
+        const s = searchQuery.trim();
+        q = q.or(
+          `first_name.ilike.%${s}%,county.ilike.%${s}%,country_of_residence.ilike.%${s}%,introduce_yourself.ilike.%${s}%,current_profession.ilike.%${s}%`
+        );
+      }
+
+      return q;
+    },
+    [
+      ageRange,
+      selectedGender,
+      selectedMaritalStatus,
+      selectedCountry,
+      selectedCounty,
+      selectedProfession,
+      selectedFilter,
+      searchQuery,
+    ]
+  );
+
+  /**
+   * Map a raw DB row to our User type.
+   */
+  const mapUser = useCallback(
+    (u: any, connMap: Map<string, ConnectionStatus>): User => ({
+      id: u.id,
+      name: u.first_name || 'Unknown',
+      age: u.age || 0,
+      location: u.county || u.country_of_residence || 'Unknown',
+      introduce_yourself: u.introduce_yourself,
+      avatar: u.avatar || (u.gender === 'Male' ? '👨' : '👩'),
+      interests: u.interests || [],
+      profileData: u,
+      connectionStatus: connMap.get(u.id) || 'none',
+    }),
+    []
+  );
+
+  /**
+   * Initial load — fetches current user profile + connections, then page 0.
+   */
+  const fetchUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      setPage(0);
+      setHasMore(true);
+
+      // 1. Auth
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('Authentication required. Please log in.');
+      setCurrentUserId(user.id);
+
+      // 2. Current user profile (only select what we need)
+      const { data: profileRows, error: profileError } = await supabase
+        .from('users')
+        .select('id, auth_id, first_name, last_name, email, age, gender, avatar, county, city, country_of_residence, is_admin')
+        .eq('auth_id', user.id)
+        .limit(1);
+
+      const currentProfile = profileRows?.[0] ?? null;
+      if (profileError || !currentProfile) throw new Error('Profile not found. Please complete registration.');
+      setCurrentUserProfile(currentProfile);
+
+      // 3. Connections (only ids + status — no heavy data)
+      const { data: connectionsData } = await (supabase as any)
+        .from('connections')
+        .select('requester_id, recipient_id, status')
+        .or(`requester_id.eq.${currentProfile.id},recipient_id.eq.${currentProfile.id}`);
+
+      const newConnectionMap = new Map<string, ConnectionStatus>();
+      const newAcceptedIds: string[] = [];
+
+      connectionsData?.forEach((conn: any) => {
+        const otherId = conn.requester_id === currentProfile.id ? conn.recipient_id : conn.requester_id;
+        newConnectionMap.set(otherId, conn.status);
+        if (conn.status === 'accepted') newAcceptedIds.push(otherId);
+      });
+
+      setConnectionMap(newConnectionMap);
+      setAcceptedIds(newAcceptedIds);
+
+      // 4. First page of members with server-side filters
+      const { data: usersData, error: usersError } = await buildQuery(currentProfile, newAcceptedIds)
+        .range(0, PAGE_SIZE - 1);
 
       if (usersError) {
-        console.error('Error fetching users:', usersError);
-        throw new Error('Failed to load profiles');
+        console.error('Supabase query error:', JSON.stringify(usersError));
+        throw new Error(`Failed to load profiles: ${usersError.message}`);
       }
 
-      if (!usersData || usersData.length === 0) {
-        setUsers([]);
-        console.log('No new profiles available.');
-        return;
-      }
-
-      // 5. Map Users (removed match percentage calculation)
-      const mappedUsers: User[] = usersData.filter((u: any) => !u.is_admin).map((u: any) => {
-        const status = connectionMap.get(u.id) || 'none';
-
-        return {
-          id: u.id,
-          name: u.is_admin ? 'Admin' : u.first_name || 'Unknown',
-          age: u.is_admin ? 0 : u.age || 0,
-          location: u.county || u.country_of_residence || 'Unknown',
-          introduce_yourself: u.introduce_yourself,
-          avatar: u.avatar || (u.gender === 'Male' ? '👨' : '👩'),
-          interests: u.interests || [],
-          profileData: u,
-          connectionStatus: status,
-          isAdmin: u.is_admin || false,
-        };
-      });
-      
-      // Sort by most recent (created_at)
-      mappedUsers.sort((a, b) => {
-        const dateA = new Date(a.profileData?.created_at || 0).getTime();
-        const dateB = new Date(b.profileData?.created_at || 0).getTime();
-        return dateB - dateA;
-      });
-
+      const mappedUsers = (usersData ?? []).map((u: any) => mapUser(u, newConnectionMap));
       setUsers(mappedUsers);
-      console.log('Users loaded:', mappedUsers.length, 'with match percentages');
+      setHasMore((usersData ?? []).length === PAGE_SIZE);
+      console.log(`Members loaded: ${mappedUsers.length}`);
     } catch (error: any) {
       console.error('Error fetching users:', error);
       setUsers([]);
@@ -257,125 +299,55 @@ if (profileError || !currentProfile) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []); 
+  }, [buildQuery, mapUser]);
+
+  /**
+   * Load the next page (called when user scrolls to the bottom).
+   */
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || !currentUserProfile) return;
+    try {
+      setLoadingMore(true);
+      const nextPage = page + 1;
+      const from = nextPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data: usersData, error } = await buildQuery(currentUserProfile, acceptedIds)
+        .range(from, to);
+
+      if (error) {
+        console.error('Load more error:', JSON.stringify(error));
+        throw error;
+      }
+
+      const newUsers = (usersData ?? []).map((u: any) => mapUser(u, connectionMap));
+      setUsers(prev => [...prev, ...newUsers]);
+      setPage(nextPage);
+      setHasMore((usersData ?? []).length === PAGE_SIZE);
+    } catch (error: any) {
+      console.error('Error loading more users:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, currentUserProfile, page, buildQuery, acceptedIds, connectionMap, mapUser]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  // Filter and search users
-  const filteredUsers = useMemo(() => {
-    let filtered = [...users];
-
-    // Apply search filter - search by age (primary) and other fields
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(user =>
-        user.age.toString().includes(query) ||
-        user.name.toLowerCase().includes(query) ||
-        user.location.toLowerCase().includes(query) ||
-        (user.introduce_yourself && user.introduce_yourself.toLowerCase().includes(query)) ||
-        (user.profileData?.current_profession && user.profileData.current_profession.toLowerCase().includes(query)) ||
-        (user.interests && Array.isArray(user.interests) && user.interests.some(interest => interest.toLowerCase().includes(query)))
-      );
-    }
-
-    // Apply category filter
-    switch (selectedFilter) {
-      case 'online':
-        filtered = filtered.filter(user =>
-          user.profileData?.last_login &&
-          new Date().getTime() - new Date(user.profileData.last_login).getTime() < 15 * 60 * 1000
-        );
-        break;
-      case 'new':
-        filtered = filtered.filter(user =>
-          user.profileData?.created_at &&
-          new Date().getTime() - new Date(user.profileData.created_at).getTime() < 7 * 24 * 60 * 60 * 1000
-        );
-        break;
-      case 'kenya':
-        filtered = filtered.filter(user => user.profileData?.country_of_residence === 'Kenya');
-        break;
-      case 'diaspora':
-        filtered = filtered.filter(user => user.profileData?.country_of_residence !== 'Kenya');
-        break;
-      case 'men':
-        filtered = filtered.filter(user => user.profileData?.gender === 'Male');
-        break;
-      case 'women':
-        filtered = filtered.filter(user => user.profileData?.gender === 'Female');
-        break;
-    }
-
-    // Apply advanced filters
-    if (ageRange.min > 18 || ageRange.max < 80) {
-      filtered = filtered.filter(user => 
-        user.age >= ageRange.min && user.age <= ageRange.max
-      );
-    }
-
-    if (selectedGender) {
-      filtered = filtered.filter(user => 
-        user.profileData?.gender === selectedGender
-      );
-    }
-
+  // The main server-side filters (gender, age, location, marital status, profession, category)
+  // are applied in buildQuery. We apply the remaining filters (hiv_status, religion, want_kids,
+  // has_children) client-side here since those columns may not exist in all DB versions.
+  const filteredUsers = users.filter(user => {
+    if (selectedHivStatus && user.profileData?.hiv_status !== selectedHivStatus) return false;
+    if (selectedReligion && user.profileData?.religion !== selectedReligion) return false;
+    if (selectedWantKids && user.profileData?.want_kids !== selectedWantKids) return false;
     if (selectedHasKids) {
-      filtered = filtered.filter(user => {
-        if (selectedHasKids === 'With Kids') {
-          return user.profileData?.has_children === true;
-        } else if (selectedHasKids === 'Without Kids') {
-          return user.profileData?.has_children === false || user.profileData?.has_children == null;
-        }
-        return true;
-      });
+      if (selectedHasKids === 'With Kids' && !user.profileData?.has_children) return false;
+      if (selectedHasKids === 'Without Kids' && user.profileData?.has_children) return false;
     }
-
-    if (selectedHivStatus) {
-      filtered = filtered.filter(user => 
-        user.profileData?.hiv_status === selectedHivStatus
-      );
-    }
-
-    if (selectedMaritalStatus) {
-      filtered = filtered.filter(user => 
-        user.profileData?.marital_status === selectedMaritalStatus
-      );
-    }
-
-    if (selectedCountry) {
-      filtered = filtered.filter(user => 
-        user.profileData?.country_of_residence === selectedCountry
-      );
-    }
-
-    if (selectedCounty) {
-      filtered = filtered.filter(user => 
-        user.profileData?.county === selectedCounty
-      );
-    }
-
-    if (selectedReligion) {
-      filtered = filtered.filter(user => 
-        user.profileData?.religion === selectedReligion
-      );
-    }
-
-    if (selectedWantKids) {
-      filtered = filtered.filter(user => 
-        user.profileData?.want_kids === selectedWantKids
-      );
-    }
-
-    if (selectedProfession) {
-      filtered = filtered.filter(user =>
-        user.profileData?.current_profession?.toLowerCase() === selectedProfession.toLowerCase()
-      );
-    }
-
-    return filtered;
-  }, [users, searchQuery, selectedFilter, ageRange, selectedGender, selectedProfession, selectedHivStatus, selectedMaritalStatus, selectedCountry, selectedCounty, selectedReligion, selectedWantKids]);
+    return true;
+  });
 
   // --- Utility functions ---
 
@@ -385,6 +357,15 @@ if (profileError || !currentProfile) {
         u.id === targetUserId ? { ...u, connectionStatus: newStatus } : u
       )
     );
+    setConnectionMap(prev => {
+      const next = new Map(prev);
+      next.set(targetUserId, newStatus);
+      return next;
+    });
+    // If accepted, add to excluded list so it won't appear on next fetch
+    if (newStatus === 'accepted') {
+      setAcceptedIds(prev => [...prev, targetUserId]);
+    }
   };
 
   const onRefresh = () => {
@@ -1208,6 +1189,14 @@ const userData = userRows?.[0] ?? null;
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+            const isNearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 300;
+            if (isNearBottom && !loadingMore && hasMore) {
+              loadMore();
+            }
+          }}
+          scrollEventThrottle={400}
         >
           {filteredUsers.length > 0 ? (
             <View style={viewMode === 'grid' ? styles.profilesGrid : styles.profilesList}>
@@ -1414,6 +1403,12 @@ const userData = userRows?.[0] ?? null;
                 <Text style={styles.refreshButtonText} selectable={false}>Refresh</Text>
               </Pressable>
             )}
+          </View>
+        )}
+        {/* Load-more spinner */}
+        {loadingMore && (
+          <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         )}
       </ScrollView>

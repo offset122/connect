@@ -6,6 +6,7 @@ import { notificationService } from '@/utils/notificationService';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export function NotificationInitializer() {
   const { user } = useAuth();
@@ -18,7 +19,15 @@ export function NotificationInitializer() {
     }
 
     // Initialize service (requests permissions + creates channels)
-    notificationService.init().catch((error) => {
+    notificationService.init().then((granted) => {
+      if (granted) {
+        // Register device push token and save to DB so remote pushes work
+        // even when the app is fully closed
+        notificationService.registerPushToken(supabase, user.id).catch((err) => {
+          console.warn('Push token registration failed:', err);
+        });
+      }
+    }).catch((error) => {
       console.error('Failed to initialize notification service:', error);
     });
 

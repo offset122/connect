@@ -21,6 +21,7 @@ export interface Database {
           has_paid: boolean;
           is_active: boolean;
           payment_status?: string | null;
+          expo_push_token?: string | null;
           // Photo fields
           full_photo?: string | null;
           passport_photo?: string | null;

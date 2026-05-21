@@ -386,6 +386,29 @@ export default function ChatScreen() {
       }
 
       setMessages((prev) => [...prev, data]);
+
+      // Notify the recipient — this triggers NotificationContext on their device
+      // which fires a local push (in-app banner or OS notification tray)
+      try {
+        const senderName = otherUser
+          ? `${otherUser.first_name || 'Someone'}`
+          : 'Someone';
+        await (supabase as any).from('notifications').insert({
+          user_id: id,                    // recipient's auth id
+          title: `New message from ${senderName} 💬`,
+          body: messageContent.length > 80
+            ? messageContent.slice(0, 80) + '…'
+            : messageContent,
+          type: 'message',
+          notification_type: 'message',
+          related_user_id: user.id,       // sender — used for deep-link to chat
+          read: false,
+        });
+      } catch (notifError) {
+        // Non-critical — message was sent, notification is best-effort
+        console.warn('Could not insert message notification:', notifError);
+      }
+
       console.log('Message sent successfully:', data);
       scrollToBottom();
     } catch (error) {

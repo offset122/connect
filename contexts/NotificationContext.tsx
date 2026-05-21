@@ -4,6 +4,9 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { notificationService } from '@/utils/notificationService';
 
+const SUPABASE_URL = "https://dbvsexpcrojtnriqfbwa.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRidnNleHBjcm9qdG5yaXFmYndhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE0MzQyMzYsImV4cCI6MjA3NzAxMDIzNn0.e3bGdg7pvM0r6eF82oTlhJYRuuQcYnvYva_232gj2y4";
+
 interface NotificationContextType {
   unreadCount: number;
   loading: boolean;
@@ -90,6 +93,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 notificationId: notif.id,
                 related_user_id: notif.related_user_id,
               },
+            });
+          }
+
+          // Also trigger the edge function so the recipient gets a push even
+          // when their app is fully closed (the real-time subscription above
+          // only fires when the app is open and the WebSocket is alive).
+          // We call it fire-and-forget — no need to await.
+          if (Platform.OS !== 'web') {
+            const notif = payload.new;
+            fetch(`${SUPABASE_URL}/functions/v1/send-push-notification`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({ notification: notif }),
+            }).catch(() => {
+              // Non-critical — local push already fired above
             });
           }
         }
