@@ -387,21 +387,22 @@ export default function ChatScreen() {
 
       setMessages((prev) => [...prev, data]);
 
-      // Notify the recipient — this triggers NotificationContext on their device
-      // which fires a local push (in-app banner or OS notification tray)
+      // Notify the recipient — inserts a notification row which:
+      // 1. Triggers NotificationContext real-time subscription → in-app banner (if app is open)
+      // 2. Triggers the Supabase webhook → edge function → Expo Push API (if app is closed)
       try {
         const senderName = otherUser
           ? `${otherUser.first_name || 'Someone'}`
           : 'Someone';
         await (supabase as any).from('notifications').insert({
-          user_id: id,                    // recipient's auth id
+          user_id: id,                    // recipient's auth UUID (route param)
           title: `New message from ${senderName} 💬`,
           body: messageContent.length > 80
             ? messageContent.slice(0, 80) + '…'
             : messageContent,
           type: 'message',
           notification_type: 'message',
-          related_user_id: user.id,       // sender — used for deep-link to chat
+          related_user_id: id,            // used for deep-link → /chat/[id]
           read: false,
         });
       } catch (notifError) {

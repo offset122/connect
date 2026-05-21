@@ -120,7 +120,16 @@ export default function NotificationsScreen() {
     if (!user) return;
 
     const channelName = `notifications-screen-${user.id}`;
-    const subscription = (supabase as any)
+
+    // Remove any existing channel with this name before subscribing
+    const existingChannel = (supabase as any).getChannels?.()?.find(
+      (ch: any) => ch.topic === `realtime:${channelName}`
+    );
+    if (existingChannel) {
+      (supabase as any).removeChannel(existingChannel);
+    }
+
+    const channel = (supabase as any)
       .channel(channelName)
       .on(
         'postgres_changes',
@@ -137,7 +146,7 @@ export default function NotificationsScreen() {
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      (supabase as any).removeChannel(channel);
     };
   }, [user, fetchNotifications]);
 

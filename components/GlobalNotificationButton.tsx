@@ -19,6 +19,8 @@ const HIDDEN_SCREENS = new Set([
   '/email-confirmation',
   '/payment-new',
   '/connections',
+  '/(tabs)/notifications',
+  '/notifications',
 ]);
 
 export default function GlobalNotificationButton() {
@@ -32,7 +34,7 @@ export default function GlobalNotificationButton() {
     router.push('/(tabs)/notifications');
   }, [router]);
 
-  if (HIDDEN_SCREENS.has(pathname) || !user) {
+  if (HIDDEN_SCREENS.has(pathname) || pathname.includes('notifications') || !user) {
     return null;
   }
 
