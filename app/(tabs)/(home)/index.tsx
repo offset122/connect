@@ -545,10 +545,12 @@ export default function DiscoverScreen() {
                     user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Phone Number Request 📱',
                     body: `${currentUserProfile.first_name || 'Someone'} is requesting your phone number`,
-                    notification_type: 'phone_request',
-                    type: 'phone_request',
-                    related_user_id: currentUserProfile.id,
                     read: false,
+                    data: {
+                      type: 'phone_request',
+                      notification_type: 'phone_request',
+                      related_user_id: currentUserProfile.id,
+                    },
                   });
 
                 Alert.alert('Request Sent!', `Phone number request sent to ${targetUser.name}`);
@@ -708,10 +710,12 @@ const userData = userRows?.[0] ?? null;
                     user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Phone Number Request 📱',
                     body: `${currentUserProfile.first_name || 'Someone'} wants your phone number`,
-                    notification_type: 'phone_request',
-                    type: 'phone_request',
-                    related_user_id: currentUserProfile.id,
                     read: false,
+                    data: {
+                      type: 'phone_request',
+                      notification_type: 'phone_request',
+                      related_user_id: currentUserProfile.id,
+                    },
                   });
 
                 Alert.alert('Request Sent!', `Phone number request sent to ${targetUser.name}`);

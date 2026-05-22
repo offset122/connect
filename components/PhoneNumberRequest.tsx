@@ -397,6 +397,30 @@ export default function PhoneNumberRequest({
 
       setRequestStatus('approved');
       setHasApproved(true);
+
+      // Notify the requester that their request was approved
+      try {
+        const { data: myProfile } = await (supabase as any)
+          .from('users')
+          .select('first_name')
+          .eq('id', user.id)
+          .maybeSingle();
+        const myName = myProfile?.first_name || 'Someone';
+        await (supabase as any).from('notifications').insert({
+          user_id: targetUserId,   // targetUserId is the requester's auth UUID
+          title: 'Phone Request Approved ✅',
+          body: `${myName} approved your phone number request. They will share their number with you shortly.`,
+          read: false,
+          data: {
+            type: 'phone_response',
+            notification_type: 'phone_response',
+            related_user_id: user.id,
+          },
+        });
+      } catch (notifErr) {
+        console.warn('[PhoneRequest] Approval notification failed:', notifErr);
+      }
+
       showAlert(
         'Request Approved',
         'Now you can enter your phone number to share with ' + targetUserName,
@@ -423,6 +447,30 @@ export default function PhoneNumberRequest({
       if (error) throw error;
 
       setRequestStatus('declined');
+
+      // Notify the requester that their request was declined
+      try {
+        const { data: myProfile } = await (supabase as any)
+          .from('users')
+          .select('first_name')
+          .eq('id', user.id)
+          .maybeSingle();
+        const myName = myProfile?.first_name || 'Someone';
+        await (supabase as any).from('notifications').insert({
+          user_id: targetUserId,   // targetUserId is the requester's auth UUID
+          title: 'Phone Request Declined',
+          body: `${myName} declined your phone number request.`,
+          read: false,
+          data: {
+            type: 'phone_response',
+            notification_type: 'phone_response',
+            related_user_id: user.id,
+          },
+        });
+      } catch (notifErr) {
+        console.warn('[PhoneRequest] Decline notification failed:', notifErr);
+      }
+
       showAlert('Request Declined', `You have declined ${targetUserName}'s request.`);
     } catch (error: any) {
       console.error('Error declining request:', error);

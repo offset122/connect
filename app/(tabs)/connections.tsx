@@ -250,10 +250,12 @@ export default function ConnectionsScreen() {
             user_id: connection.userId,
             title: 'Connection Request Declined',
             body: `${currentUserName} declined your connection request.`,
-            notification_type: 'connection_declined',
-            type: 'connection_declined',
-            related_user_id: currentUserId,
             read: false,
+            data: {
+              type: 'connection_declined',
+              notification_type: 'connection_declined',
+              related_user_id: currentUserId,
+            },
           });
       }
 

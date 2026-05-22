@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 type PhoneRequest = {
   id: string;
   requester_id: string;
+  requester_auth_id?: string;
   target_user_id: string;
   request_status: 'pending' | 'approved' | 'declined';
   created_at: string;
@@ -65,12 +66,12 @@ export default function PhoneRequestManager() {
 
       if (requestsError) throw requestsError;
 
-      // Fetch requester names
+      // Fetch requester names AND auth_ids for correct notification targeting
       if (requestsData && requestsData.length > 0) {
         const requesterIds = requestsData.map((req: any) => req.requester_id);
         const { data: usersData } = await (supabase as any)
           .from('users')
-          .select('id, first_name, username')
+          .select('id, first_name, username, auth_id')
           .in('id', requesterIds);
 
         const enrichedRequests = requestsData.map((req: any) => {
@@ -78,6 +79,7 @@ export default function PhoneRequestManager() {
           return {
             ...req,
             requester_name: requester?.first_name || requester?.username || 'Someone',
+            requester_auth_id: requester?.auth_id ?? req.requester_id,
           };
         });
 
@@ -92,11 +94,11 @@ export default function PhoneRequestManager() {
     }
   };
 
-  const handleApprove = async (requestId: string, requesterId: string, requesterName: string) => {
+  const handleApprove = async (requestId: string, requesterId: string, requesterName: string, requesterAuthId: string) => {
     setPhoneInputModal({
       visible: true,
       requestId,
-      requesterId,
+      requesterId: requesterAuthId,  // store auth UUID so notification uses it correctly
       requesterName,
       phoneNumber: '',
       loading: false,
@@ -160,21 +162,23 @@ export default function PhoneRequestManager() {
         console.warn('Could not fetch user name, using default:', userFetchError);
       }
 
-      // Create notification for requester - non-critical operation, don't fail whole flow if this fails
+      // Create notification for requester - non-critical operation
       try {
         await (supabase as any)
           .from('notifications')
           .insert({
-            user_id: requesterId,
+            user_id: requesterId,   // already the auth UUID (set in handleApprove)
             title: 'Phone Number Shared! 📱',
             body: `${currentUserName} shared their phone number with you. Check your messages.`,
-            notification_type: 'phone_response',
-            related_user_id: user.id,
             read: false,
+            data: {
+              type: 'phone_response',
+              notification_type: 'phone_response',
+              related_user_id: user.id,
+            },
           });
       } catch (notificationError) {
         console.warn('Could not send notification, but phone number was shared successfully:', notificationError);
-        // Continue execution - notification failure should not block the main action
       }
 
       // Close modal and reset
@@ -198,9 +202,8 @@ export default function PhoneRequestManager() {
     }
   };
 
-  const handleDecline = async (requestId: string, requesterId: string, requesterName: string) => {
+  const handleDecline = async (requestId: string, requesterId: string, requesterName: string, requesterAuthId: string) => {
     try {
-      // Update request status
       const { error: updateError } = await (supabase as any)
         .from('phone_number_requests')
         .update({ request_status: 'declined' })
@@ -208,8 +211,6 @@ export default function PhoneRequestManager() {
 
       if (updateError) throw updateError;
 
-      // Get current user's name.
-      // Use .limit(1) instead of .single() to avoid 406 Not Acceptable errors.
       const { data: currentUserRows } = await (supabase as any)
         .from('users')
         .select('first_name, username')
@@ -219,22 +220,22 @@ export default function PhoneRequestManager() {
       const currentUserData = currentUserRows?.[0] ?? null;
       const currentUserName = currentUserData?.first_name || currentUserData?.username || 'Someone';
 
-      // Create notification for requester
+      // Create notification for requester using auth UUID
       await (supabase as any)
         .from('notifications')
         .insert({
-          user_id: requesterId,
+          user_id: requesterAuthId,   // auth UUID — NOT the DB row id
           title: 'Phone Number Request Declined',
           body: `${currentUserName} declined your phone number request.`,
-          notification_type: 'phone_response',
-          type: 'phone_response',
-          related_user_id: user?.id,
           read: false,
+          data: {
+            type: 'phone_response',
+            notification_type: 'phone_response',
+            related_user_id: user?.id,
+          },
         });
 
       Alert.alert('Declined', `Request from ${requesterName} has been declined`);
-
-      // Remove from list
       setRequests(prev => prev.filter(req => req.id !== requestId));
     } catch (error: any) {
       console.error('Error declining request:', error);
@@ -273,7 +274,7 @@ export default function PhoneRequestManager() {
             <View style={styles.actionButtons}>
               <Pressable
                 style={styles.approveButton}
-                onPress={() => handleApprove(request.id, request.requester_id, request.requester_name || 'Someone')}
+                onPress={() => handleApprove(request.id, request.requester_id, request.requester_name || 'Someone', request.requester_auth_id ?? request.requester_id)}
               >
                 <IconSymbol name="checkmark" size={18} color={colors.card} />
                 <Text style={styles.approveButtonText}>Share</Text>
@@ -281,7 +282,7 @@ export default function PhoneRequestManager() {
 
               <Pressable
                 style={styles.declineButton}
-                onPress={() => handleDecline(request.id, request.requester_id, request.requester_name || 'Someone')}
+                onPress={() => handleDecline(request.id, request.requester_id, request.requester_name || 'Someone', request.requester_auth_id ?? request.requester_id)}
               >
                 <IconSymbol name="xmark" size={18} color={colors.error} />
                 <Text style={styles.declineButtonText}>Decline</Text>

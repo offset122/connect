@@ -153,9 +153,14 @@ export default function ProfileViewScreen() {
     const currentAuthId = authData.user?.id;
     if (!currentAuthId) return Alert.alert("Error", "User not authenticated.");
 
-    const { data: currentUserProfile } = await supabase.from('users').select('id').eq('auth_id', currentAuthId).single();
+    const { data: currentUserProfile } = await supabase
+      .from('users')
+      .select('id, first_name')
+      .eq('auth_id', currentAuthId)
+      .single();
     if (!currentUserProfile) return Alert.alert("Error", "Could not find your profile.");
     const currentUserId = currentUserProfile.id;
+    const currentUserName = currentUserProfile.first_name || 'Someone';
 
     try {
       if (action === 'connect') {
@@ -166,6 +171,24 @@ export default function ProfileViewScreen() {
         }, { onConflict: 'requester_id,recipient_id', ignoreDuplicates: true });
         if (error) throw error;
         setConnectionStatus('pending');
+
+        // Notify the recipient
+        try {
+          await (supabase as any).from('notifications').insert({
+            user_id: userProfile.auth_id,   // auth UUID
+            title: 'New Connection Request 💌',
+            body: `${currentUserName} wants to connect with you!`,
+            read: false,
+            data: {
+              type: 'connection',
+              notification_type: 'connection_request',
+              related_user_id: currentAuthId,
+            },
+          });
+        } catch (notifErr) {
+          console.warn('[ProfileView] Connection request notification failed:', notifErr);
+        }
+
         Alert.alert('Success', `Connection request sent to ${displayName}!`);
       } else if (action === 'accept' || action === 'decline') {
         const status = action === 'accept' ? 'accepted' : 'rejected';
@@ -175,6 +198,30 @@ export default function ProfileViewScreen() {
           .eq('recipient_id', currentUserId);
         if (error) throw error;
         setConnectionStatus(status as ConnectionStatus);
+
+        // Notify the requester
+        try {
+          const notifTitle = action === 'accept'
+            ? 'Connection Accepted! 🎉'
+            : 'Connection Request Declined';
+          const notifBody = action === 'accept'
+            ? `${currentUserName} accepted your connection request. You can now message each other!`
+            : `${currentUserName} declined your connection request.`;
+          await (supabase as any).from('notifications').insert({
+            user_id: userProfile.auth_id,   // auth UUID of the original requester
+            title: notifTitle,
+            body: notifBody,
+            read: false,
+            data: {
+              type: action === 'accept' ? 'connection_accepted' : 'connection_declined',
+              notification_type: action === 'accept' ? 'connection_accepted' : 'connection_declined',
+              related_user_id: currentAuthId,
+            },
+          });
+        } catch (notifErr) {
+          console.warn('[ProfileView] Connection response notification failed:', notifErr);
+        }
+
         Alert.alert('Success', `${displayName}'s request was ${status}.`);
         safeBack(router);
       }
@@ -274,7 +321,7 @@ export default function ProfileViewScreen() {
           data: {
             type: 'photo_request',
             notification_type: 'photo_request',
-            related_user_id: currentUserProfile.id,
+            related_user_id: user.id,   // sender's auth UUID for correct routing
           },
         });
 

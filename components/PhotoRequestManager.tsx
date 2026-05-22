@@ -9,6 +9,7 @@ import { notificationService } from '../utils/notificationService';
 type PhotoRequest = {
   id: string;
   requester_id: string;
+  requester_auth_id?: string;
   target_user_id: string;
   request_status: 'pending' | 'approved' | 'declined';
   created_at: string;
@@ -40,17 +41,21 @@ export default function PhotoRequestManager() {
       if (requestsError) throw requestsError;
 
       if (requestsData && requestsData.length > 0) {
-        // Fetch requester names
+        // Fetch requester names AND auth_ids so we can send notifications correctly
         const requesterIds = requestsData.map((req: any) => req.requester_id);
         const { data: usersData } = await supabase
           .from('users')
-          .select('id, first_name')
+          .select('id, first_name, auth_id')
           .in('id', requesterIds);
 
-        const requestsWithNames = requestsData.map((req: any) => ({
-          ...req,
-          requester_name: usersData?.find((u: any) => u.id === req.requester_id)?.first_name || 'Someone',
-        }));
+        const requestsWithNames = requestsData.map((req: any) => {
+          const requesterUser = usersData?.find((u: any) => u.id === req.requester_id);
+          return {
+            ...req,
+            requester_name: requesterUser?.first_name || 'Someone',
+            requester_auth_id: requesterUser?.auth_id ?? req.requester_id,
+          };
+        });
 
         setRequests(requestsWithNames);
       }
@@ -61,7 +66,7 @@ export default function PhotoRequestManager() {
     }
   };
 
-  const handleApprove = async (requestId: string, requesterId: string) => {
+  const handleApprove = async (requestId: string, requesterId: string, requesterAuthId: string) => {
     try {
       // Update request status
       const { error: updateError } = await supabase
@@ -71,7 +76,7 @@ export default function PhotoRequestManager() {
 
       if (updateError) throw updateError;
 
-      // Create notification
+      // Create notification — use requesterAuthId (auth UUID) so NotificationContext picks it up
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: userData } = await supabase
@@ -80,26 +85,26 @@ export default function PhotoRequestManager() {
           .eq('id', user.id)
           .single();
 
-        const notificationMessage = {
-          user_id: requesterId,
-          title: '✅ Photo Request Approved!',
-          body: `${userData?.first_name || 'Someone'} approved your photo request. You can now view their photos!`,
-          read: false,
-          data: {
-            type: 'photo_request_approved',
-            notification_type: 'photo_request_approved',
-            related_user_id: user.id,
-          },
-        };
+        const approveBody = `${userData?.first_name || 'Someone'} approved your photo request. You can now view their photos!`;
 
         await supabase
           .from('notifications')
-          .insert(notificationMessage);
+          .insert({
+            user_id: requesterAuthId,   // auth UUID — NOT the DB row id
+            title: '✅ Photo Request Approved!',
+            body: approveBody,
+            read: false,
+            data: {
+              type: 'photo_request_approved',
+              notification_type: 'photo_request_approved',
+              related_user_id: user.id,
+            },
+          });
 
-        // Send push notification
+        // Local push for when app is in foreground
         await notificationService.showAppNotification({
           title: '✅ Photo Request Approved!',
-          body: `${userData?.first_name || 'Someone'} approved your photo request. You can now view their photos!`,
+          body: approveBody,
           type: 'photo_request_approved',
           data: { requestId, targetUserId: user.id },
         });
@@ -113,7 +118,7 @@ export default function PhotoRequestManager() {
     }
   };
 
-  const handleDecline = async (requestId: string, requesterId: string) => {
+  const handleDecline = async (requestId: string, requesterId: string, requesterAuthId: string) => {
     try {
       const { error } = await supabase
         .from('photo_requests')
@@ -122,7 +127,7 @@ export default function PhotoRequestManager() {
 
       if (error) throw error;
 
-      // Create notification for requester
+      // Create notification — use requesterAuthId (auth UUID)
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: userData } = await supabase
@@ -136,7 +141,7 @@ export default function PhotoRequestManager() {
         await supabase
           .from('notifications')
           .insert({
-            user_id: requesterId,
+            user_id: requesterAuthId,   // auth UUID — NOT the DB row id
             title: '❌ Photo Request Declined',
             body: declineBody,
             read: false,
@@ -147,7 +152,6 @@ export default function PhotoRequestManager() {
             },
           });
 
-        // Send push notification
         await notificationService.showAppNotification({
           title: '❌ Photo Request Declined',
           body: declineBody,
@@ -191,14 +195,14 @@ export default function PhotoRequestManager() {
           <View style={styles.actionButtons}>
             <Pressable
               style={styles.approveButton}
-              onPress={() => handleApprove(request.id, request.requester_id)}
+              onPress={() => handleApprove(request.id, request.requester_id, request.requester_auth_id ?? request.requester_id)}
             >
               <IconSymbol name="checkmark.circle.fill" size={20} color={colors.card} />
               <Text style={styles.approveButtonText}>Approve</Text>
             </Pressable>
             <Pressable
               style={styles.declineButton}
-              onPress={() => handleDecline(request.id, request.requester_id)}
+              onPress={() => handleDecline(request.id, request.requester_id, request.requester_auth_id ?? request.requester_id)}
             >
               <IconSymbol name="xmark.circle.fill" size={20} color={colors.error} />
               <Text style={styles.declineButtonText}>Decline</Text>
