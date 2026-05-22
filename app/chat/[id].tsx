@@ -214,25 +214,38 @@ export default function ChatScreen() {
       setOtherUser(userData);
       setIsOtherUserOnline(userData.online_status || false);
 
+      // Resolve the canonical sender/receiver ID used in the messages table.
+      // Messages are stored with sender_id = auth UUID (user.id from AuthContext).
+      // The route param `id` could be auth_id OR db row id depending on how the
+      // chat was opened (inbox vs notification). We now have both from userData.
+      // Use auth_id as the canonical ID since that's what sender_id/receiver_id store.
+      const otherUserAuthId = userData.auth_id ?? id;
+      const myAuthId = user.id;
+
+      console.log('[Chat] Fetching messages — myAuthId:', myAuthId, 'otherUserAuthId:', otherUserAuthId, 'routeId:', id);
+
       // Fetch messages between current user and other user (exclude deleted messages)
       const { data: messagesData, error: messagesError } = await (supabase as any)
         .from('messages')
         .select('*')
-        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${id}),and(sender_id.eq.${id},receiver_id.eq.${user.id})`)
+        .or(
+          `and(sender_id.eq.${myAuthId},receiver_id.eq.${otherUserAuthId}),` +
+          `and(sender_id.eq.${otherUserAuthId},receiver_id.eq.${myAuthId})`
+        )
         .eq('is_deleted', false)
         .order('created_at', { ascending: true });
 
       if (messagesError) throw messagesError;
 
+      console.log('[Chat] Messages loaded:', messagesData?.length, 'for pair', myAuthId, '↔', otherUserAuthId);
       setMessages(messagesData || []);
-      console.log('Messages loaded:', messagesData?.length);
       
       // Mark messages as read
       await (supabase as any)
         .from('messages')
         .update({ status: 'read' })
-        .eq('receiver_id', user.id)
-        .eq('sender_id', id)
+        .eq('receiver_id', myAuthId)
+        .eq('sender_id', otherUserAuthId)
         .neq('status', 'read');
 
       setTimeout(scrollToBottom, 100);
@@ -254,7 +267,7 @@ export default function ChatScreen() {
     const messagesChannelName = `messages:${id}`;
     const blockedChannelName = `blocked:${id}`;
     
-    // Subscribe to new messages
+    // Subscribe to new messages — filter by receiver_id = current user's auth UUID
     const channel = supabase
       .channel(messagesChannelName)
       .on(
@@ -263,15 +276,19 @@ export default function ChatScreen() {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `receiver_id=eq.${currentUserId}`,
+          filter: `receiver_id=eq.${user?.id}`,
         },
         (payload) => {
           if (!mounted) return;
-          console.log('New message received:', payload);
-          if (payload.new.sender_id === id) {
+          // Accept messages from the other user regardless of whether we have
+          // their auth_id or db row id in the route param — check both.
+          const senderIsOtherUser =
+            payload.new.sender_id === id ||
+            (otherUser && payload.new.sender_id === otherUser.auth_id) ||
+            (otherUser && payload.new.sender_id === otherUser.id);
+          if (senderIsOtherUser) {
             setMessages((prev) => [...prev, payload.new as Message]);
             scrollToBottom();
-            // Play notification sound for new messages
             playNotificationSound();
           }
         }
@@ -455,7 +472,10 @@ export default function ChatScreen() {
         const senderName = otherUser?.first_name || 'Someone';
         // Use auth_id so it matches NotificationContext filter (user_id = auth UUID)
         const recipientAuthId = otherUser?.auth_id ?? id;
-        console.log('[Chat] Inserting notification for recipient auth_id:', recipientAuthId);
+        // Always use the sender's auth UUID as related_user_id so the recipient
+        // can open /chat/${senderAuthUUID} and find the conversation correctly.
+        const senderAuthId = user.id; // user.id in AuthContext is always the auth UUID
+        console.log('[Chat] Inserting notification for recipient auth_id:', recipientAuthId, 'sender:', senderAuthId);
         const { error: notifError } = await (supabase as any).from('notifications').insert({
           user_id: recipientAuthId,
           title: `New message from ${senderName} 💬`,
@@ -463,12 +483,10 @@ export default function ChatScreen() {
             ? messageContent.slice(0, 80) + '…'
             : messageContent,
           read: false,
-          // All extra columns go into data JSONB — works even before the migration is run.
-          // After running 20260522_fix_notifications_rls.sql these columns will exist directly.
           data: {
             type: 'message',
             notification_type: 'message',
-            related_user_id: id,
+            related_user_id: senderAuthId,  // sender's auth UUID — opens correct chat
           },
         });
         if (notifError) {

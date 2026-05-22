@@ -59,7 +59,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   const refreshNotifications = async () => {
-    setLoading(true);
+    // Silently refresh count — don't set loading: true to avoid triggering
+    // full-page spinners in screens that watch the loading state
     await fetchUnreadCount();
   };
 

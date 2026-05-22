@@ -153,13 +153,32 @@ export default function NotificationsScreen() {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'notifications',
           filter: `user_id=eq.${user.id}`,
         },
-        () => {
-          fetchNotifications();
+        (payload: any) => {
+          // Prepend new notification without triggering loading spinner
+          if (payload.new) {
+            setNotifications((prev) => [payload.new as Notification, ...prev]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload: any) => {
+          if (payload.new) {
+            setNotifications((prev) =>
+              prev.map((n) => (n.id === payload.new.id ? (payload.new as Notification) : n))
+            );
+          }
         }
       )
       .subscribe();
@@ -167,18 +186,18 @@ export default function NotificationsScreen() {
     return () => {
       (supabase as any).removeChannel(channel);
     };
-  }, [user, fetchNotifications]);
+  }, [user]);
 
   const markAsRead = async (notificationId: string) => {
+    // Optimistically update UI
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+    );
     try {
       await (supabase as any)
         .from('notifications')
         .update({ read: true })
         .eq('id', notificationId);
-
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
-      );
       refreshNotifications();
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -186,14 +205,14 @@ export default function NotificationsScreen() {
   };
 
   const markAllAsRead = async () => {
+    // Optimistically update UI
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
       await (supabase as any)
         .from('notifications')
         .update({ read: true })
         .eq('user_id', user?.id)
         .eq('read', false);
-
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       refreshNotifications();
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -201,12 +220,16 @@ export default function NotificationsScreen() {
   };
 
   const deleteNotification = async (notificationId: string) => {
+    // Optimistically remove from UI immediately — no loading spinner
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     try {
       await (supabase as any).from('notifications').delete().eq('id', notificationId);
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+      // Refresh badge count silently in background — don't trigger loading state
       refreshNotifications();
     } catch (error) {
       console.error('Error deleting notification:', error);
+      // Re-fetch to restore the item if delete failed
+      fetchNotifications();
     }
   };
 
