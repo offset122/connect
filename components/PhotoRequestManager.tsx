@@ -76,16 +76,31 @@ export default function PhotoRequestManager() {
 
       if (updateError) throw updateError;
 
-      // Create notification — use requesterAuthId (auth UUID) so NotificationContext picks it up
+      // Get current user (the approver / target of the original request)
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name')
-          .eq('id', user.id)
-          .single();
+      if (!user) return;
 
-        const approveBody = `${userData?.first_name || 'Someone'} approved your photo request. You can now view their photos!`;
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id, first_name')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (userData) {
+        // Grant the approver automatic access to the requester's photos too.
+        // Upsert so we don't create duplicates if a reverse request already exists.
+        await supabase
+          .from('photo_requests')
+          .upsert(
+            {
+              requester_id: userData.id,       // approver is now the requester
+              target_user_id: requesterId,     // original requester becomes the target
+              request_status: 'approved',
+            },
+            { onConflict: 'requester_id,target_user_id', ignoreDuplicates: false }
+          );
+
+        const approveBody = `${userData.first_name || 'Someone'} approved your photo request. You can now view their photos — and they can view yours!`;
 
         await supabase
           .from('notifications')
@@ -110,7 +125,7 @@ export default function PhotoRequestManager() {
         });
       }
 
-      Alert.alert('Approved', 'Photo request approved successfully');
+      Alert.alert('Approved', 'Photo request approved. You both now have access to each other\'s photos!');
       fetchPhotoRequests();
     } catch (error) {
       console.error('Error approving request:', error);

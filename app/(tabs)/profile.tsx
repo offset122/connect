@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, ScrollView, Platform, Pressable, Switch, Alert, ActivityIndicator, Image, Linking, useWindowDimensions, Modal, TextInput } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, router } from "expo-router";
+import { Stack, router, useFocusEffect } from "expo-router";
 import { IconSymbol } from "../../components/IconSymbol";
 import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../../styles/commonStyles";
 import { supabase } from "../integrations/supabase/client";
@@ -49,9 +49,11 @@ export default function ProfileScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [passwordVerified, setPasswordVerified] = useState(false);
 
-  useEffect(() => {
-    fetchUserProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserProfile();
+    }, [])
+  );
 
   const fetchUserProfile = async () => {
     try {

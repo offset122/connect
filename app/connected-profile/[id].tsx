@@ -71,6 +71,7 @@ export default function ConnectedProfileScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [reporting, setReporting] = useState(false);
   const [canViewPhotos, setCanViewPhotos] = useState(false);
+  const [incomingPhotoRequest, setIncomingPhotoRequest] = useState<{ id: string } | null>(null);
 
   useEffect(() => {
     if (typeof id === 'string') {
@@ -144,6 +145,17 @@ export default function ConnectedProfileScreen() {
       const hasPhotoAccess = isAccepted || !!photoRequestData;
       setCanViewPhotos(hasPhotoAccess);
 
+      // Check if the other user has already sent a pending photo request to the current user
+      const { data: incomingReqData } = await (supabase as any)
+        .from('photo_requests')
+        .select('id')
+        .eq('requester_id', userId)
+        .eq('target_user_id', user.id)
+        .eq('request_status', 'pending')
+        .maybeSingle();
+
+      setIncomingPhotoRequest(incomingReqData ?? null);
+
       console.log('Connected user profile loaded:', userData.first_name, '| Photo access:', hasPhotoAccess);
     } catch (error) {
       console.error('Error fetching connected user profile:', error);
@@ -174,11 +186,48 @@ export default function ConnectedProfileScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check if there's already a pending request
+      // Fetch current user's profile including photo fields
+      const { data: currentUserProfile } = await (supabase as any)
+        .from('users')
+        .select('id, first_name, full_photo, passport_photo, profile_images')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (!currentUserProfile) {
+        Alert.alert('Error', 'Could not find your profile');
+        return;
+      }
+
+      // Guard: must have uploaded own photos first
+      const hasOwnPhotos =
+        currentUserProfile.full_photo ||
+        currentUserProfile.passport_photo ||
+        (Array.isArray(currentUserProfile.profile_images) && currentUserProfile.profile_images.length > 0);
+
+      if (!hasOwnPhotos) {
+        Alert.alert(
+          'Upload Your Photos First',
+          'You need to upload at least one photo to your profile before you can request to see others\' photos. Go to your profile to add photos.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Guard: if the other user already sent a request to the current user, block and redirect
+      if (incomingPhotoRequest) {
+        Alert.alert(
+          `${user?.first_name ?? 'This person'} Already Requested Your Photos`,
+          'They have already sent you a photo request. Approve their request and you\'ll both get access to each other\'s photos automatically!',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Check if there's already a pending or approved request
       const { data: existingRequest } = await (supabase as any)
         .from('photo_requests')
         .select('*')
-        .eq('requester_id', user.id)
+        .eq('requester_id', currentUserProfile.id)
         .eq('target_user_id', targetUserId)
         .in('request_status', ['pending', 'approved'])
         .maybeSingle();
@@ -196,12 +245,30 @@ export default function ConnectedProfileScreen() {
       const { error } = await (supabase as any)
         .from('photo_requests')
         .insert({
-          requester_id: user.id,
+          requester_id: currentUserProfile.id,
           target_user_id: targetUserId,
           request_status: 'pending',
         });
 
       if (error) throw error;
+
+      // Notify the target user
+      if (user && targetUserId) {
+        const targetUser = user;
+        await (supabase as any)
+          .from('notifications')
+          .insert({
+            user_id: targetUserId,
+            title: 'New Photo Request 📸',
+            body: `${currentUserProfile.first_name} wants to see your photos`,
+            read: false,
+            data: {
+              type: 'photo_request',
+              notification_type: 'photo_request',
+              related_user_id: user.id,
+            },
+          });
+      }
 
       Alert.alert('Request Sent', 'Your photo request has been sent. You will be notified when approved.');
     } catch (error) {
@@ -467,16 +534,36 @@ export default function ConnectedProfileScreen() {
 
         {!canViewPhotos && connection?.status === 'accepted' && (
           <View style={styles.section}>
-            <Pressable 
-              style={styles.requestPhotosButton}
-              onPress={() => requestPhotoAccess(user.id)}
-            >
-              <IconSymbol name="photo.stack" size={24} color={colors.card} />
-              <Text style={styles.requestPhotosButtonText}>Request to View Photos</Text>
-            </Pressable>
-            <Text style={styles.requestPhotosHint}>
-              Send a request to see {user.first_name}'s full and passport photos
-            </Text>
+            {/* Info note */}
+            <View style={styles.photoInfoNote}>
+              <IconSymbol name="info.circle.fill" size={16} color={colors.primary} />
+              <Text style={styles.photoInfoNoteText}>
+                If {user.first_name} gives you access to view their photos, they automatically get access to view yours too!
+              </Text>
+            </View>
+
+            {incomingPhotoRequest ? (
+              // Other user already sent a request — prompt to respond instead
+              <View style={styles.incomingRequestBanner}>
+                <IconSymbol name="photo.stack" size={20} color={colors.primary} />
+                <Text style={styles.incomingRequestText}>
+                  {user.first_name} has already requested to see your photos. Approve their request and you'll both get access to each other's photos automatically!
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Pressable 
+                  style={styles.requestPhotosButton}
+                  onPress={() => requestPhotoAccess(user.id)}
+                >
+                  <IconSymbol name="photo.stack" size={24} color={colors.card} />
+                  <Text style={styles.requestPhotosButtonText}>Request to View Photos</Text>
+                </Pressable>
+                <Text style={styles.requestPhotosHint}>
+                  Send a request to see {user.first_name}'s full and passport photos
+                </Text>
+              </>
+            )}
           </View>
         )}
 
@@ -731,6 +818,41 @@ requestPhotosHint: {
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
+  },
+  photoInfoNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: colors.primary + '12',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    marginBottom: 12,
+  },
+  photoInfoNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.primary,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  incomingRequestBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: colors.primary + '40',
+  },
+  incomingRequestText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+    fontWeight: '500',
   },
   viewGalleryButton: {
     backgroundColor: colors.success,

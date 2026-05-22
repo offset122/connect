@@ -102,6 +102,8 @@ export default function ProfileViewScreen() {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [photoRequestStatus, setPhotoRequestStatus] = useState<'none' | 'pending' | 'approved' | 'declined'>('none');
+  // Tracks if the OTHER user has already sent a photo request TO the current user (pending)
+  const [incomingPhotoRequest, setIncomingPhotoRequest] = useState<{ id: string } | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('none');
   const [sendingPhotoRequest, setSendingPhotoRequest] = useState(false);
   const [showMoreDetails, setShowMoreDetails] = useState(false);
@@ -253,7 +255,7 @@ export default function ProfileViewScreen() {
 
       const { data: currentUserProfile, error: profileError } = await supabase
         .from('users')
-        .select('id, first_name')
+        .select('id, first_name, profile_images, full_photo, passport_photo')
         .eq('auth_id', user.id)
         .single();
 
@@ -266,6 +268,40 @@ export default function ProfileViewScreen() {
       // Check if requesting own photos
       if (currentUserProfile.id === userProfile.id) {
         Alert.alert('Error', 'You cannot request your own photos');
+        return;
+      }
+
+      // Guard: you must have uploaded your own photos before requesting others'
+      const hasOwnPhotos =
+        currentUserProfile.full_photo ||
+        currentUserProfile.passport_photo ||
+        (Array.isArray(currentUserProfile.profile_images) && currentUserProfile.profile_images.length > 0);
+
+      if (!hasOwnPhotos) {
+        Alert.alert(
+          'Upload Your Photos First',
+          'You need to upload at least one photo to your profile before you can request to see others\' photos. Go to your profile to add photos.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Guard: if the other user has already sent a request to the current user,
+      // block sending a new request and direct them to respond instead.
+      const { data: incomingReq } = await supabase
+        .from('photo_requests')
+        .select('id, request_status')
+        .eq('requester_id', userProfile.id)
+        .eq('target_user_id', currentUserProfile.id)
+        .eq('request_status', 'pending')
+        .maybeSingle();
+
+      if (incomingReq) {
+        Alert.alert(
+          `${userProfile.first_name} Already Requested Your Photos`,
+          `${userProfile.first_name} has already sent you a photo request. Go to your notifications or profile to approve or decline their request. If you approve, you'll both get access to each other's photos automatically.`,
+          [{ text: 'OK' }]
+        );
         return;
       }
 
@@ -451,7 +487,7 @@ export default function ProfileViewScreen() {
 
       if (!currentUserProfile) return;
 
-      // Check photo request status
+      // Check outgoing photo request status (current user → other user)
       const { data: existingRequest } = await supabase
         .from('photo_requests')
         .select('id, request_status')
@@ -464,6 +500,17 @@ export default function ProfileViewScreen() {
       } else {
         setPhotoRequestStatus('none');
       }
+
+      // Check incoming photo request (other user → current user, still pending)
+      const { data: incomingReq } = await supabase
+        .from('photo_requests')
+        .select('id')
+        .eq('requester_id', userProfile.id)
+        .eq('target_user_id', currentUserProfile.id)
+        .eq('request_status', 'pending')
+        .maybeSingle();
+
+      setIncomingPhotoRequest(incomingReq ?? null);
 
       // Check connection status
       const { data: connData } = await (supabase as any)
@@ -826,48 +873,66 @@ export default function ProfileViewScreen() {
   
   const renderActions = () => (
     <View style={styles.actionsContainer}>
-      {/* Request Photo Button */}
-      <Pressable
-        style={[
-          styles.photoRequestButton,
-          (photoRequestStatus === 'pending' || sendingPhotoRequest) && styles.photoRequestButtonPending,
-          photoRequestStatus === 'approved' && styles.photoRequestButtonApproved
-        ]}
-        onPress={() => {
-          if (photoRequestStatus === 'approved') {
-            // Navigate to their photo gallery
-            router.push({
-              pathname: '/photo-gallery' as any,
-              params: { userId: userProfile.id, isOwnProfile: 'false' },
-            } as any);
-          } else {
-            handleRequestPhoto();
-          }
-        }}
-        disabled={(photoRequestStatus === 'pending' || sendingPhotoRequest)}
-      >
-        {sendingPhotoRequest ? (
-          <>
-            <ActivityIndicator size="small" color="#FF9500" />
-            <Text style={[styles.photoRequestButtonTextPending, { color: '#FF9500' }]}>Sending...</Text>
-          </>
-        ) : photoRequestStatus === 'pending' ? (
-          <>
-            <IconSymbol name="clock.fill" size={20} color="#FF9500" />
-            <Text style={[styles.photoRequestButtonTextPending, { color: '#FF9500' }]}>Waiting for Approval</Text>
-          </>
-        ) : photoRequestStatus === 'approved' ? (
-          <>
-            <IconSymbol name="checkmark.circle.fill" size={20} color={colors.success} />
-            <Text style={styles.photoRequestButtonTextApproved}>Approved - View Photos</Text>
-          </>
-        ) : (
-          <>
-            <IconSymbol name="photo.fill" size={20} color={colors.card} />
-            <Text style={styles.photoRequestButtonText}>Request to See Photos</Text>
-          </>
-        )}
-      </Pressable>
+      {/* Photo request info note */}
+      <View style={styles.photoInfoNote}>
+        <IconSymbol name="info.circle.fill" size={16} color={colors.primary} />
+        <Text style={styles.photoInfoNoteText}>
+          If {userProfile.first_name} gives you access to view their photos, they automatically get access to view yours too!
+        </Text>
+      </View>
+
+      {/* Request Photo Button — or incoming-request prompt */}
+      {incomingPhotoRequest ? (
+        // The other user already sent a request to the current user — prompt them to respond
+        <View style={styles.incomingRequestBanner}>
+          <IconSymbol name="photo.stack" size={20} color={colors.primary} />
+          <Text style={styles.incomingRequestText}>
+            {userProfile.first_name} has already requested to see your photos. Approve their request and you'll both get access to each other's photos automatically!
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          style={[
+            styles.photoRequestButton,
+            (photoRequestStatus === 'pending' || sendingPhotoRequest) && styles.photoRequestButtonPending,
+            photoRequestStatus === 'approved' && styles.photoRequestButtonApproved
+          ]}
+          onPress={() => {
+            if (photoRequestStatus === 'approved') {
+              // Navigate to their photo gallery
+              router.push({
+                pathname: '/photo-gallery' as any,
+                params: { userId: userProfile.id, isOwnProfile: 'false' },
+              } as any);
+            } else {
+              handleRequestPhoto();
+            }
+          }}
+          disabled={(photoRequestStatus === 'pending' || sendingPhotoRequest)}
+        >
+          {sendingPhotoRequest ? (
+            <>
+              <ActivityIndicator size="small" color="#FF9500" />
+              <Text style={[styles.photoRequestButtonTextPending, { color: '#FF9500' }]}>Sending...</Text>
+            </>
+          ) : photoRequestStatus === 'pending' ? (
+            <>
+              <IconSymbol name="clock.fill" size={20} color="#FF9500" />
+              <Text style={[styles.photoRequestButtonTextPending, { color: '#FF9500' }]}>Waiting for Approval</Text>
+            </>
+          ) : photoRequestStatus === 'approved' ? (
+            <>
+              <IconSymbol name="checkmark.circle.fill" size={20} color={colors.success} />
+              <Text style={styles.photoRequestButtonTextApproved}>Approved - View Photos</Text>
+            </>
+          ) : (
+            <>
+              <IconSymbol name="photo.fill" size={20} color={colors.card} />
+              <Text style={styles.photoRequestButtonText}>Request to See Photos</Text>
+            </>
+          )}
+        </Pressable>
+      )}
 
       <ConnectionActions
         targetUserName={displayName}
@@ -1256,6 +1321,40 @@ const styles = StyleSheet.create({
   },
   numberRequestContainer: {
     marginTop: 0,
+  },
+  photoInfoNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.primary + '12',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  photoInfoNoteText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.primary,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  incomingRequestBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.primary + '10',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary + '40',
+  },
+  incomingRequestText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+    fontWeight: '500',
   },
    photoRequestButton: {
     flexDirection: 'row',
