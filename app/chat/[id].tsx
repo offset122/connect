@@ -61,6 +61,8 @@ export default function ChatScreen() {
   const [callNotifications, setCallNotifications] = useState<any[]>([]);
   const [isBlocked, setIsBlocked] = useState(false);
   const [hasBlocked, setHasBlocked] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
+  const [connectionRequesterIsMe, setConnectionRequesterIsMe] = useState(false);
 
   // Play notification sound for new messages
   const playNotificationSound = async () => {
@@ -77,7 +79,6 @@ export default function ChatScreen() {
     }
   };
 
-  // Handle blocking the user
   const handleBlockUser = async () => {
     if (!user || !otherUser) return;
 
@@ -111,6 +112,49 @@ export default function ChatScreen() {
         },
       ]
     );
+  };
+
+  // Send a connection request from within the chat
+  const handleSendConnectionRequest = async () => {
+    if (!user || !otherUser) return;
+    try {
+      const { data: myDbProfile } = await (supabase as any)
+        .from('users')
+        .select('id, first_name')
+        .eq('auth_id', user.id)
+        .maybeSingle();
+
+      if (!myDbProfile) return;
+
+      const { error } = await (supabase as any)
+        .from('connections')
+        .upsert(
+          { requester_id: myDbProfile.id, recipient_id: otherUser.id, status: 'pending' },
+          { onConflict: 'requester_id,recipient_id', ignoreDuplicates: true }
+        );
+
+      if (error) throw error;
+
+      // Notify the other user
+      await (supabase as any).from('notifications').insert({
+        user_id: otherUser.auth_id,
+        title: 'New Connection Request 💌',
+        body: `${myDbProfile.first_name || 'Someone'} wants to connect with you!`,
+        read: false,
+        data: {
+          type: 'connection',
+          notification_type: 'connection_request',
+          related_user_id: user.id,
+        },
+      });
+
+      setConnectionStatus('pending');
+      setConnectionRequesterIsMe(true);
+      Alert.alert('Request Sent', `Connection request sent to ${otherUser.first_name}!`);
+    } catch (error: any) {
+      console.error('Error sending connection request:', error);
+      Alert.alert('Error', 'Failed to send connection request.');
+    }
   };
 
 
@@ -166,6 +210,29 @@ export default function ChatScreen() {
     }
   }, [user?.id, id]);
 
+  const checkConnectionStatus = useCallback(async (myDbId: string, otherDbId: string) => {
+    try {
+      const { data: connData } = await (supabase as any)
+        .from('connections')
+        .select('status, requester_id')
+        .or(
+          `and(requester_id.eq.${myDbId},recipient_id.eq.${otherDbId}),` +
+          `and(requester_id.eq.${otherDbId},recipient_id.eq.${myDbId})`
+        )
+        .maybeSingle();
+
+      if (connData) {
+        setConnectionStatus(connData.status);
+        setConnectionRequesterIsMe(connData.requester_id === myDbId);
+      } else {
+        setConnectionStatus('none');
+        setConnectionRequesterIsMe(false);
+      }
+    } catch (error) {
+      console.error('Error checking connection status:', error);
+    }
+  }, []);
+
   const fetchMessages = useCallback(async () => {
     try {
       setLoading(true);
@@ -213,6 +280,17 @@ export default function ChatScreen() {
       
       setOtherUser(userData);
       setIsOtherUserOnline(userData.online_status || false);
+
+      // Check connection status between the two users (using DB row IDs)
+      const { data: myDbProfile } = await (supabase as any)
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .maybeSingle();
+
+      if (myDbProfile && userData.id) {
+        await checkConnectionStatus(myDbProfile.id, userData.id);
+      }
 
       // Resolve the canonical sender/receiver ID used in the messages table.
       // Messages are stored with sender_id = auth UUID (user.id from AuthContext).
@@ -1221,39 +1299,86 @@ export default function ChatScreen() {
           </View>
         ) : (
           <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
-            <View style={styles.inputWrapper}>
-              {/* Media Attachment Button */}
-              <Pressable
-                style={styles.mediaButton}
-                onPress={() => setShowMediaPicker(true)}
-              >
-                <IconSymbol name="plus.circle.fill" size={32} color={colors.primary} />
-              </Pressable>
+            {/* Not-connected notice + shortcut button */}
+            {connectionStatus !== 'accepted' && (
+              <View style={styles.notConnectedBanner}>
+                <IconSymbol name="info.circle.fill" size={15} color={colors.primary} />
+                <Text style={styles.notConnectedText}>
+                  {connectionStatus === 'pending'
+                    ? connectionRequesterIsMe
+                      ? `Your connection request to ${otherUser?.first_name || 'this person'} is pending. Connect to chat freely.`
+                      : `${otherUser?.first_name || 'This person'} sent you a connection request. Accept it to chat freely.`
+                    : `You can read messages here, but to chat freely you need to connect with ${otherUser?.first_name || 'this person'} first.`}
+                </Text>
+                {connectionStatus === 'none' && (
+                  <Pressable style={styles.connectShortcutButton} onPress={handleSendConnectionRequest}>
+                    <IconSymbol name="person.badge.plus" size={14} color={colors.card} />
+                    <Text style={styles.connectShortcutText}>Connect</Text>
+                  </Pressable>
+                )}
+                {connectionStatus === 'pending' && !connectionRequesterIsMe && (
+                  <Pressable
+                    style={styles.connectShortcutButton}
+                    onPress={async () => {
+                      try {
+                        const { data: myDbProfile } = await (supabase as any)
+                          .from('users').select('id').eq('auth_id', user?.id).maybeSingle();
+                        if (!myDbProfile) return;
+                        await (supabase as any).from('connections')
+                          .update({ status: 'accepted' })
+                          .eq('requester_id', otherUser.id)
+                          .eq('recipient_id', myDbProfile.id);
+                        setConnectionStatus('accepted');
+                        Alert.alert('Connected!', `You are now connected with ${otherUser?.first_name}.`);
+                      } catch (e) {
+                        Alert.alert('Error', 'Failed to accept request.');
+                      }
+                    }}
+                  >
+                    <IconSymbol name="checkmark.circle.fill" size={14} color={colors.card} />
+                    <Text style={styles.connectShortcutText}>Accept</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+            <View style={[styles.inputWrapper, connectionStatus !== 'accepted' && styles.inputWrapperLocked]}>
+              {/* Media Attachment Button — only when connected */}
+              {connectionStatus === 'accepted' && (
+                <Pressable
+                  style={styles.mediaButton}
+                  onPress={() => setShowMediaPicker(true)}
+                >
+                  <IconSymbol name="plus.circle.fill" size={32} color={colors.primary} />
+                </Pressable>
+              )}
 
               <TextInput
                 style={styles.input}
-                placeholder="Type a message..."
+                placeholder={connectionStatus === 'accepted' ? 'Type a message...' : 'Connect to send messages...'}
                 placeholderTextColor={colors.textSecondary}
                 value={newMessage}
-                onChangeText={setNewMessage}
+                onChangeText={connectionStatus === 'accepted' ? setNewMessage : undefined}
                 multiline
                 maxLength={1000}
                 textAlignVertical="top"
+                editable={connectionStatus === 'accepted'}
               />
-              <Pressable
-                style={[
-                  styles.sendButton,
-                  (!newMessage.trim() || sending) && styles.sendButtonDisabled,
-                ]}
-                onPress={handleSend}
-                disabled={!newMessage.trim() || sending}
-              >
-                {sending ? (
-                  <ActivityIndicator size="small" color={colors.card} />
-                ) : (
-                  <IconSymbol name="arrow.up" size={24} color={colors.card} />
-                )}
-              </Pressable>
+              {connectionStatus === 'accepted' && (
+                <Pressable
+                  style={[
+                    styles.sendButton,
+                    (!newMessage.trim() || sending) && styles.sendButtonDisabled,
+                  ]}
+                  onPress={handleSend}
+                  disabled={!newMessage.trim() || sending}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color={colors.card} />
+                  ) : (
+                    <IconSymbol name="arrow.up" size={24} color={colors.card} />
+                  )}
+                </Pressable>
+              )}
             </View>
           </View>
         )}
@@ -1827,6 +1952,46 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
   },
 
+
+  // Not-connected banner + locked input styles
+  notConnectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    backgroundColor: colors.primary + '12',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  notConnectedText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.primary,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  connectShortcutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.full,
+  },
+  connectShortcutText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.card,
+  },
+  inputWrapperLocked: {
+    opacity: 0.6,
+    backgroundColor: colors.border + '40',
+  },
 
   // Blocked user styles
   blockedContainer: {
