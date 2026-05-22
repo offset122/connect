@@ -255,7 +255,7 @@ export default function DiscoverScreen() {
       // 2. Current user profile (only select what we need)
       const { data: profileRows, error: profileError } = await supabase
         .from('users')
-        .select('id, auth_id, first_name, last_name, email, age, gender, avatar, county, city, country_of_residence, is_admin')
+        .select('id, auth_id, first_name, last_name, email, age, gender, avatar, county, city, country_of_residence, is_admin, subscription_expires_at, payment_date, subscription_plan')
         .eq('auth_id', user.id)
         .limit(1);
 
@@ -915,39 +915,41 @@ const userData = userRows?.[0] ?? null;
                 </Pressable>
                 <View style={styles.statDivider} />
                 <Pressable style={[styles.statItem, selectedFilter === 'new' && styles.statItemActive]} onPress={() => setSelectedFilter(selectedFilter === 'new' ? 'all' : 'new')}>
-                  <Text style={styles.statLabel}>
+                  <Text style={[
+                    styles.statLabel,
+                    (() => {
+                      if (!currentUserProfile || currentUserProfile.is_admin) return null;
+                      const expiry = currentUserProfile.subscription_expires_at
+                        ? new Date(currentUserProfile.subscription_expires_at)
+                        : currentUserProfile.payment_date
+                          ? new Date(new Date(currentUserProfile.payment_date).getTime() + (currentUserProfile.subscription_plan === '90' ? 90 : 30) * 24 * 60 * 60 * 1000)
+                          : null;
+                      if (!expiry) return null;
+                      const days = Math.max(0, Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                      if (days <= 0) return { color: '#FF3B30' };
+                      if (days <= 7) return { color: '#FF9500' };
+                      return null;
+                    })(),
+                  ]}>
                     {(() => {
-                      // Calculate correct remaining days for CURRENT USER only
-                      if (!currentUserProfile) return 'New This Week';
-                      
-                      // Admin accounts have unlimited access never expire
+                      if (!currentUserProfile) return 'My Plan';
                       if (currentUserProfile.is_admin) return 'Unlimited';
-                      
-                      const planDays = currentUserProfile.subscription_plan === '90' ? 90 : 30;
-                      
-                      if (currentUserProfile.subscription_expires_at) {
-                        const expiry = new Date(currentUserProfile.subscription_expires_at);
-                        const diffTime = expiry.getTime() - Date.now();
-                        const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-                        
-                        if (days <= 0) return 'Expired';
-                        if (days === 1) return `${days} day remaining`;
-                        return `${days} days remaining`;
-                      }
-                      
-                      // Fallback calculation from payment date
-                      if (currentUserProfile.payment_date) {
-                        const startDate = new Date(currentUserProfile.payment_date);
-                        const expiry = new Date(startDate.getTime() + planDays * 24 * 60 * 60 * 1000);
-                        const diffTime = expiry.getTime() - Date.now();
-                        const days = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-                        
-                        if (days <= 0) return 'Expired';
-                        if (days === 1) return `${days} day remaining`;
-                        return `${days} days remaining`;
-                      }
 
-                      return 'New This Week';
+                      const planDays = currentUserProfile.subscription_plan === '90' ? 90 : 30;
+
+                      const expiry = currentUserProfile.subscription_expires_at
+                        ? new Date(currentUserProfile.subscription_expires_at)
+                        : currentUserProfile.payment_date
+                          ? new Date(new Date(currentUserProfile.payment_date).getTime() + planDays * 24 * 60 * 60 * 1000)
+                          : null;
+
+                      if (!expiry) return 'My Plan';
+
+                      const days = Math.max(0, Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+
+                      if (days <= 0) return 'Expired';
+                      if (days === 1) return '1 day left';
+                      return `${days} days left`;
                     })()}
                   </Text>
                 </Pressable>
