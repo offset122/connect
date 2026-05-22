@@ -26,9 +26,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       appStateRef.current = state;
+      // Re-fetch count whenever the app comes back to the foreground
+      if (state === 'active') {
+        fetchUnreadCount();
+      }
     });
     return () => sub.remove();
-  }, []);
+  }, [user]);
 
   const fetchUnreadCount = async () => {
     if (!user) {

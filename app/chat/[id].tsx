@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, Linking } from "react-native";
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, Linking, AppState } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { IconSymbol } from "../../components/IconSymbol";
 import { colors, commonStyles, spacing, borderRadius, shadows } from "../../styles/commonStyles";
 import { supabase } from "../integrations/supabase/client";
@@ -42,6 +42,7 @@ type CallHistoryData = {
 export default function ChatScreen() {
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -345,6 +346,66 @@ export default function ChatScreen() {
       }
     };
   }, [id, currentUserId, user?.id, checkBlockedStatus]);
+
+  // ── Presence: keep own online_status in sync & watch the other user ──────────
+  useEffect(() => {
+    if (!user?.id || !id) return;
+
+    // Mark current user as online
+    const setOnline = () => {
+      (supabase as any)
+        .from('users')
+        .update({ online_status: true, last_login: new Date().toISOString() })
+        .eq('auth_id', user.id)
+        .then(() => {});
+    };
+
+    // Mark current user as offline
+    const setOffline = () => {
+      (supabase as any)
+        .from('users')
+        .update({ online_status: false })
+        .eq('auth_id', user.id)
+        .then(() => {});
+    };
+
+    setOnline();
+
+    // Handle app going to background / foreground
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setOnline();
+      } else if (state === 'background' || state === 'inactive') {
+        setOffline();
+      }
+    });
+
+    // Subscribe to the other user's online_status changes in real-time
+    const presenceChannelName = `presence:${id}`;
+    const presenceChannel = (supabase as any)
+      .channel(presenceChannelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `auth_id=eq.${id}`,
+        },
+        (payload: any) => {
+          if (payload.new && typeof payload.new.online_status === 'boolean') {
+            setIsOtherUserOnline(payload.new.online_status);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      setOffline();
+      appStateSub.remove();
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [user?.id, id]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || !user || sending) return;
@@ -864,8 +925,8 @@ export default function ChatScreen() {
       
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 75}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <ScrollView
           ref={scrollViewRef}
@@ -1099,13 +1160,13 @@ export default function ChatScreen() {
         </ScrollView>
 
         {isBlocked ? (
-          <View style={styles.blockedContainer}>
+          <View style={[styles.blockedContainer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
             <Text style={styles.blockedText}>
               You cannot send messages to this user because they have blocked you.
             </Text>
           </View>
         ) : hasBlocked ? (
-          <View style={styles.blockedContainer}>
+          <View style={[styles.blockedContainer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
             <Text style={styles.blockedText}>
               You have blocked this user. Unblock them to send messages.
             </Text>
@@ -1133,7 +1194,7 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         ) : (
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
             <View style={styles.inputWrapper}>
               {/* Media Attachment Button */}
               <Pressable

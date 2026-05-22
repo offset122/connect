@@ -48,11 +48,13 @@ export default function GlobalNotificationButton() {
       >
         <View style={styles.iconWrapper}>
           <IconSymbol name="bell.fill" size={22} color="#FFFFFF" />
-          <View style={[styles.badge, unreadCount === 0 && styles.badgeZero]}>
-            <Text style={styles.badgeText}>
-              {unreadCount > 20 ? '20+' : unreadCount}
-            </Text>
-          </View>
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 20 ? '20+' : unreadCount}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     </View>
@@ -104,12 +106,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 4,
     elevation: 8,
-  },
-  badgeZero: {
-    backgroundColor: 'rgba(255,255,255,0.35)',
-    borderColor: 'rgba(255,255,255,0.6)',
-    shadowOpacity: 0,
-    elevation: 0,
   },
   badgeText: {
     fontSize: 10,

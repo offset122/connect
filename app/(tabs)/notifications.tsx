@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useFocusEffect } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { borderRadius, colors, commonStyles, shadows, spacing } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -114,6 +114,17 @@ export default function NotificationsScreen() {
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
+
+  // Sync badge count whenever this screen comes into focus or loses focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchNotifications();
+      return () => {
+        // Refresh the badge count in context when leaving the screen
+        refreshNotifications();
+      };
+    }, [fetchNotifications, refreshNotifications])
+  );
 
   // Real-time subscription — auto-refresh when the table changes
   useEffect(() => {
