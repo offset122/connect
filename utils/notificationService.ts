@@ -362,6 +362,7 @@ class NotificationServiceClass {
       this.responseListener.remove();
       this.responseListener = null;
     }
+    this.expoPushToken = null; // Clear cached token so it's not reused by the next login session
     this._isInitialized = false;
   }
 

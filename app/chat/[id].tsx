@@ -469,7 +469,7 @@ export default function ChatScreen() {
       // 1. Triggers NotificationContext real-time subscription → in-app banner (if app is open)
       // 2. Triggers the Supabase webhook → edge function → Expo Push API (if app is closed)
       try {
-        const senderName = otherUser?.first_name || 'Someone';
+        const senderName = user.profile?.first_name || 'Someone'; // use the logged-in user's own name, not the recipient's
         // Use auth_id so it matches NotificationContext filter (user_id = auth UUID)
         const recipientAuthId = otherUser?.auth_id ?? id;
         // Always use the sender's auth UUID as related_user_id so the recipient

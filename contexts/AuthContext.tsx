@@ -263,6 +263,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // --- 5. Sign Out ---
   const signOut = async () => {
     try {
+      // Clear the push token from the DB so this device no longer receives
+      // notifications for the outgoing user after they log out.
+      if (user?.id) {
+        await supabase
+          .from('users')
+          .update({ expo_push_token: null })
+          .eq('auth_id', user.id);
+      }
       await supabase.auth.signOut();
       setUser(null);
       await AsyncStorage.clear();
