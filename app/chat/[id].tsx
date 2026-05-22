@@ -456,18 +456,26 @@ export default function ChatScreen() {
         // Use auth_id so it matches NotificationContext filter (user_id = auth UUID)
         const recipientAuthId = otherUser?.auth_id ?? id;
         console.log('[Chat] Inserting notification for recipient auth_id:', recipientAuthId);
-        await (supabase as any).from('notifications').insert({
-          user_id: recipientAuthId,       // MUST be auth UUID — matches NotificationContext filter
+        const { error: notifError } = await (supabase as any).from('notifications').insert({
+          user_id: recipientAuthId,
           title: `New message from ${senderName} 💬`,
           body: messageContent.length > 80
             ? messageContent.slice(0, 80) + '…'
             : messageContent,
-          type: 'message',
-          notification_type: 'message',
-          related_user_id: id,            // route param — used for deep-link → /chat/[id]
           read: false,
+          // All extra columns go into data JSONB — works even before the migration is run.
+          // After running 20260522_fix_notifications_rls.sql these columns will exist directly.
+          data: {
+            type: 'message',
+            notification_type: 'message',
+            related_user_id: id,
+          },
         });
-        console.log('[Chat] Notification inserted successfully');
+        if (notifError) {
+          console.error('[Chat] Notification insert failed:', notifError.message, notifError.code);
+        } else {
+          console.log('[Chat] Notification inserted successfully');
+        }
       } catch (notifError) {
         console.warn('[Chat] Could not insert message notification:', notifError);
       }

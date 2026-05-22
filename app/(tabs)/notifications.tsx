@@ -44,6 +44,14 @@ type Notification = {
   related_user_id?: string;
   notification_type?: string;
   body?: string;
+  // data JSONB holds type/related_user_id before the schema migration is run
+  data?: {
+    type?: string;
+    notification_type?: string;
+    related_user_id?: string;
+    description?: string;
+    [key: string]: any;
+  };
 };
 
 // ─── Group notifications by relative date ────────────────────────────────────
@@ -205,20 +213,24 @@ export default function NotificationsScreen() {
   const handlePress = (notification: Notification) => {
     if (!notification.read) markAsRead(notification.id);
 
-    switch (notification.type) {
+    // Support both top-level columns (after migration) and data JSONB (before migration)
+    const notifType = notification.type ?? notification.data?.type ?? 'system';
+    const relatedUserId = notification.related_user_id ?? notification.data?.related_user_id;
+
+    switch (notifType) {
       case 'message':
       case 'missed_call':
-        if (notification.related_user_id) {
-          router.push(`/chat/${notification.related_user_id}` as any);
+        if (relatedUserId) {
+          router.push(`/chat/${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/messages' as any);
         }
-break;
+        break;
       case 'connection':
       case 'connection_accepted':
       case 'connection_declined':
-        if (notification.related_user_id) {
-          router.push(`/connected-profile/${notification.related_user_id}` as any);
+        if (relatedUserId) {
+          router.push(`/connected-profile/${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/connections' as any);
         }
@@ -228,28 +240,29 @@ break;
         break;
       case 'phone_request':
       case 'phone_response':
+      case 'phone_shared':
         router.push('/(tabs)/connections' as any);
         break;
       case 'photo_request':
       case 'photo_request_declined':
-        if (notification.related_user_id) {
-          router.push(`/connected-profile/${notification.related_user_id}` as any);
+        if (relatedUserId) {
+          router.push(`/connected-profile/${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/connections' as any);
         }
         break;
-      // Photo request approved - navigate to their gallery
       case 'photo_request_approved':
-        if (notification.related_user_id) {
+        if (relatedUserId) {
           router.push({
             pathname: '/photo-gallery' as any,
-            params: { userId: notification.related_user_id, isOwnProfile: 'false' },
+            params: { userId: relatedUserId, isOwnProfile: 'false' },
           } as any);
         } else {
           router.push('/(tabs)/notifications' as any);
         }
         break;
       default:
+        router.push('/(tabs)/notifications' as any);
         break;
     }
   };
@@ -435,7 +448,8 @@ break;
               <Text style={styles.groupLabel}>{label}</Text>
 
               {items.map((notification) => {
-                const iconColor = getNotificationColor(notification.type);
+                const notifType = notification.type ?? notification.data?.type ?? 'system';
+                const iconColor = getNotificationColor(notifType);
                 return (
                   <Pressable
                     key={notification.id}
@@ -456,7 +470,7 @@ break;
                         ]}
                       >
                         <IconSymbol
-                          name={getNotificationIcon(notification.type) as any}
+                          name={getNotificationIcon(notifType) as any}
                           size={22}
                           color={iconColor}
                         />
@@ -479,12 +493,12 @@ break;
                             style={[styles.typeChip, { backgroundColor: iconColor + '15' }]}
                           >
                             <Text style={[styles.typeChipText, { color: iconColor }]}>
-                              {getTypeLabel(notification.type)}
+                              {getTypeLabel(notifType)}
                             </Text>
                           </View>
                         </View>
                         <Text style={styles.notificationDescription} numberOfLines={2}>
-                          {notification.body || notification.description}
+                          {notification.body || notification.description || notification.data?.description}
                         </Text>
                         <Text style={styles.notificationTime}>
                           {formatTimestamp(notification.created_at)}

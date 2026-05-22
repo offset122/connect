@@ -81,12 +81,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           filter: `user_id=eq.${user.id}`,
         },
         (payload: any) => {
-          console.log('[NotificationContext] INSERT received for user:', user.id, 'type:', payload.new?.type);
+          console.log('[NotificationContext] INSERT received for user:', user.id, 'type:', payload.new?.type ?? payload.new?.data?.type);
           // Update unread badge count
           fetchUnreadCount();
 
           if (Platform.OS !== 'web') {
             const notif = payload.new;
+            // Support both top-level columns (after migration) and data JSONB (before migration)
+            const notifType = notif.type ?? notif.data?.type ?? 'system';
+            const relatedUserId = notif.related_user_id ?? notif.data?.related_user_id;
             const isAppActive = appStateRef.current === 'active';
 
             console.log('[NotificationContext] App state:', appStateRef.current, '— showing notification:', notif.title);
@@ -96,22 +99,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               inAppNotificationEmitter.emit({
                 id: notif.id ?? String(Date.now()),
                 title: notif.title || 'New Notification',
-                body: notif.body || notif.description || '',
-                type: notif.type || 'system',
+                body: notif.body || notif.description || notif.data?.description || '',
+                type: notifType,
                 data: {
                   notificationId: notif.id,
-                  related_user_id: notif.related_user_id,
+                  related_user_id: relatedUserId,
                 },
               });
             } else {
               // App is backgrounded — schedule a real OS notification
               notificationService.showAppNotification({
                 title: notif.title || 'New Notification',
-                body: notif.body || notif.description || '',
-                type: notif.type || 'system',
+                body: notif.body || notif.description || notif.data?.description || '',
+                type: notifType,
                 data: {
                   notificationId: notif.id,
-                  related_user_id: notif.related_user_id,
+                  related_user_id: relatedUserId,
                 },
               }).then((notifId) => {
                 console.log('[NotificationContext] OS notification scheduled:', notifId);

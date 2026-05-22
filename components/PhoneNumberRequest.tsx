@@ -355,13 +355,15 @@ export default function PhoneNumberRequest({
       // Send notification
       await (supabase as any).from('notifications').insert({
         user_id: targetUserId,
-        type: 'phone_request',
         title: 'Phone Number Request 📱',
         body: `${displayName} has requested your phone number.`,
-        description: `${displayName} would like to exchange contact info. You can respond in Connections.`,
-        related_user_id: user.id,
         read: false,
-        notification_type: 'phone_request',
+        data: {
+          type: 'phone_request',
+          notification_type: 'phone_request',
+          related_user_id: user.id,
+          description: `${displayName} would like to exchange contact info. You can respond in Connections.`,
+        },
       });
 
       setRequestStatus('pending');
@@ -506,9 +508,12 @@ export default function PhoneNumberRequest({
           user_id: targetUserId,
           title: 'Phone Number Shared 📞',
           body: `${currentUserName} shared their phone number with you.`,
-          notification_type: 'phone_shared',
-          related_user_id: user.id,
           read: false,
+          data: {
+            type: 'phone_shared',
+            notification_type: 'phone_shared',
+            related_user_id: user.id,
+          },
         });
       } catch (notificationError) {
         console.warn('Notification failed, but phone number was sent successfully:', notificationError);

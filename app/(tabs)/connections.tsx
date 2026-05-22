@@ -194,10 +194,12 @@ export default function ConnectionsScreen() {
             user_id: connection.userId,
             title: 'Connection Accepted! 🎉',
             body: `${currentUserName} accepted your connection request. You can now message each other!`,
-            notification_type: 'connection_accepted',
-            type: 'connection_accepted',
-            related_user_id: currentUserId,
             read: false,
+            data: {
+              type: 'connection_accepted',
+              notification_type: 'connection_accepted',
+              related_user_id: currentUserId,
+            },
           });
       }
 

@@ -417,10 +417,12 @@ export default function DiscoverScreen() {
           user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'New Connection Request 💌',
           body: `${senderName} wants to connect with you! Check your requests to accept or decline.`,
-          notification_type: 'connection_request',
-          type: 'connection',
-          related_user_id: currentUserProfile.id,
           read: false,
+          data: {
+            type: 'connection',
+            notification_type: 'connection_request',
+            related_user_id: currentUserProfile.id,
+          },
         });
 
       Alert.alert('Success', `Connection request sent to ${targetUser.name}!`);
@@ -452,10 +454,12 @@ export default function DiscoverScreen() {
           user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'Connection Accepted! 🎉',
           body: `${currentUserName} accepted your connection request. You can now message each other!`,
-          notification_type: 'connection_accepted',
-          type: 'connection_accepted',
-          related_user_id: currentUserProfile.id,
           read: false,
+          data: {
+            type: 'connection_accepted',
+            notification_type: 'connection_accepted',
+            related_user_id: currentUserProfile.id,
+          },
         });
       
       Alert.alert('Connected!', `You are now connected with ${targetUser.name}`);
@@ -487,10 +491,12 @@ export default function DiscoverScreen() {
           user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
           title: 'Connection Request Declined',
           body: `${currentUserName} declined your connection request.`,
-          notification_type: 'connection_declined',
-          type: 'connection_declined',
-          related_user_id: currentUserProfile.id,
           read: false,
+          data: {
+            type: 'connection_declined',
+            notification_type: 'connection_declined',
+            related_user_id: currentUserProfile.id,
+          },
         });
 
       Alert.alert('Declined', `Connection request from ${targetUser.name} has been declined`);
@@ -615,10 +621,12 @@ const existingRequest = existingRequestRows?.[0] ?? null;
                     user_id: targetUser.auth_id ?? targetUser.profileData?.auth_id ?? targetUser.id,
                     title: 'Photo Request 📸',
                     body: `${currentUserProfile.first_name || 'Someone'} wants to view your photos`,
-                    notification_type: 'photo_request',
-                    type: 'photo_request',
-                    related_user_id: currentUserProfile.id,
                     read: false,
+                    data: {
+                      type: 'photo_request',
+                      notification_type: 'photo_request',
+                      related_user_id: currentUserProfile.id,
+                    },
                   });
 
                 Alert.alert('Success!', `Photo request sent to ${targetUser.name}`);

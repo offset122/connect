@@ -84,10 +84,12 @@ export default function PhotoRequestManager() {
           user_id: requesterId,
           title: '✅ Photo Request Approved!',
           body: `${userData?.first_name || 'Someone'} approved your photo request. You can now view their photos!`,
-          notification_type: 'photo_request_approved',
-          type: 'photo_request_approved',
-          related_user_id: user.id,
           read: false,
+          data: {
+            type: 'photo_request_approved',
+            notification_type: 'photo_request_approved',
+            related_user_id: user.id,
+          },
         };
 
         await supabase
@@ -137,10 +139,12 @@ export default function PhotoRequestManager() {
             user_id: requesterId,
             title: '❌ Photo Request Declined',
             body: declineBody,
-            notification_type: 'photo_request_declined',
-            type: 'photo_request_declined',
-            related_user_id: user.id,
             read: false,
+            data: {
+              type: 'photo_request_declined',
+              notification_type: 'photo_request_declined',
+              related_user_id: user.id,
+            },
           });
 
         // Send push notification

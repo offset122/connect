@@ -270,9 +270,12 @@ export default function ProfileViewScreen() {
           user_id: userProfile.auth_id,   // auth UUID so NotificationContext picks it up
           title: 'New Photo Request 📸',
           body: `${currentUserProfile.first_name} wants to see your photos`,
-          type: 'photo_request',
-          related_user_id: currentUserProfile.id,
           read: false,
+          data: {
+            type: 'photo_request',
+            notification_type: 'photo_request',
+            related_user_id: currentUserProfile.id,
+          },
         });
 
       if (notificationError) {
