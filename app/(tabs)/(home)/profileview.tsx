@@ -238,6 +238,58 @@ export default function ProfileViewScreen() {
     router.push(`/chat/${userProfile.id}`);
   }, [userProfile?.id]);
 
+  const handleReport = useCallback(() => {
+    if (!userProfile) return;
+
+    const reportReasons = [
+      'Spam',
+      'Fake Profile',
+      'Harassment',
+      'Inappropriate Content',
+      'Threatening Behavior',
+      'Scam',
+      'Underage User',
+      'Other',
+    ];
+
+    Alert.alert(
+      'Report User',
+      `What would you like to report about ${userProfile.first_name}?`,
+      [
+        ...reportReasons.map((reason) => ({
+          text: reason,
+          onPress: () => submitReport(reason),
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  }, [userProfile]);
+
+  const submitReport = useCallback(async (reason: string) => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) return;
+
+      const { error } = await (supabase as any).from('reports').insert({
+        reporter_id: authData.user.id,
+        reported_user_id: userProfile?.auth_id,
+        reason,
+        status: 'pending',
+      });
+
+      if (error && error.code !== '42P01') throw error;
+
+      Alert.alert(
+        'Report Submitted',
+        'Thank you for your report. Our moderation team will review it and take appropriate action.',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('Error submitting report:', error);
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    }
+  }, [userProfile?.auth_id]);
+
   const handleRequestPhoto = useCallback(async () => {
     if (!userProfile?.id) {
       console.error('No user profile ID available');
@@ -952,6 +1004,12 @@ export default function ProfileViewScreen() {
           targetUserId={userProfile.id}
         />
       </View>
+
+      {/* Report User Button */}
+      <Pressable style={styles.reportButton} onPress={handleReport}>
+        <IconSymbol name="exclamationmark.triangle.fill" size={18} color={colors.error} />
+        <Text style={styles.reportButtonText}>Report {userProfile.first_name}</Text>
+      </Pressable>
     </View>
   );
 
@@ -1321,6 +1379,23 @@ const styles = StyleSheet.create({
   },
   numberRequestContainer: {
     marginTop: 0,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: colors.error + '50',
+    backgroundColor: colors.error + '08',
+    marginTop: spacing.xs,
+  },
+  reportButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.error,
   },
   photoInfoNote: {
     flexDirection: 'row',

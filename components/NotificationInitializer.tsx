@@ -98,7 +98,11 @@ export function NotificationInitializer() {
         }
 
         // ── Connections ───────────────────────────────────────────────────────
-        case 'connection':
+        case 'connection': {
+          // A new connection request — go straight to the Requests tab
+          router.push('/(tabs)/connections' as any);
+          break;
+        }
         case 'connection_accepted':
         case 'connection_declined':
         case 'match': {
