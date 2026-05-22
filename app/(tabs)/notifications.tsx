@@ -250,10 +250,13 @@ export default function NotificationsScreen() {
         }
         break;
       case 'connection':
+        // New request — go to Requests tab
+        router.push('/(tabs)/connections' as any);
+        break;
       case 'connection_accepted':
       case 'connection_declined':
         if (relatedUserId) {
-          router.push(`/connected-profile/${relatedUserId}` as any);
+          router.push(`/(tabs)/(home)/profileview?userId=${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/connections' as any);
         }
@@ -269,7 +272,7 @@ export default function NotificationsScreen() {
       case 'photo_request':
       case 'photo_request_declined':
         if (relatedUserId) {
-          router.push(`/connected-profile/${relatedUserId}` as any);
+          router.push(`/(tabs)/(home)/profileview?userId=${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/connections' as any);
         }

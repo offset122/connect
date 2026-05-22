@@ -155,7 +155,7 @@ export default function InAppNotificationBanner() {
       case 'connection_declined':
       case 'match':
         if (relatedUserId) {
-          router.push(`/connected-profile/${relatedUserId}` as any);
+          router.push(`/(tabs)/(home)/profileview?userId=${relatedUserId}` as any);
         } else {
           router.push('/(tabs)/connections' as any);
         }
