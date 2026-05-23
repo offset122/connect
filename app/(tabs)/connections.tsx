@@ -7,6 +7,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
 import PhoneNumberRequest from "@/components/PhoneNumberRequest";
+import { withTimeout } from '@/utils/withTimeout';
 
 
 // Get local avatar image from assets
@@ -81,17 +82,19 @@ export default function ConnectionsScreen() {
       setCurrentUserId(user.id);
 
       // Fetch connections where user is either requester or recipient
-      const { data: connectionsData, error: connectionsError } = await (supabase as any)
-        .from('connections')
-        .select(`
-          id,
-          status,
-          requester_id,
-          recipient_id,
-          created_at
-        `)
-        .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`)
-        .order('created_at', { ascending: false });
+      const { data: connectionsData, error: connectionsError } = await withTimeout(
+        (supabase as any)
+          .from('connections')
+          .select(`
+            id,
+            status,
+            requester_id,
+            recipient_id,
+            created_at
+          `)
+          .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`)
+          .order('created_at', { ascending: false })
+      );
 
       if (connectionsError) throw connectionsError;
 
@@ -102,24 +105,26 @@ export default function ConnectionsScreen() {
         if (conn.recipient_id !== user.id) userIds.add(conn.recipient_id);
       });
 
-      const { data: usersData, error: usersError } = await (supabase as any)
-        .from('users')
-        .select(`
-          id,
-          first_name,
-          gender,
-          age,
-          city,
-          county,
-          avatar,
-          introduce_yourself,
-          current_profession,
-          has_paid,
-          is_active
-        `)
-        .in('id', Array.from(userIds))
-        .eq('is_active', true)
-        .eq('has_paid', true);
+      const { data: usersData, error: usersError } = await withTimeout(
+        (supabase as any)
+          .from('users')
+          .select(`
+            id,
+            first_name,
+            gender,
+            age,
+            city,
+            county,
+            avatar,
+            introduce_yourself,
+            current_profession,
+            has_paid,
+            is_active
+          `)
+          .in('id', Array.from(userIds))
+          .eq('is_active', true)
+          .eq('has_paid', true)
+      );
 
       if (usersError) throw usersError;
 

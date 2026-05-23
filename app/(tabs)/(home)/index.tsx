@@ -11,6 +11,7 @@ import PhoneNumberRequest from "../../../components/PhoneNumberRequest";
 import ConnectionActions from "../../../components/ConnectionActions";
 import { LinearGradient } from 'expo-linear-gradient';
 import HeaderNotificationButton from '@/components/HeaderNotificationButton';
+import { withTimeout } from '../../../utils/withTimeout';
 
 // Get local avatar image from assets
 const getAvatarImage = (filename: string | null | undefined) => {
@@ -253,21 +254,25 @@ export default function DiscoverScreen() {
       setCurrentUserId(user.id);
 
       // 2. Current user profile (only select what we need)
-      const { data: profileRows, error: profileError } = await supabase
-        .from('users')
-        .select('id, auth_id, first_name, last_name, email, age, gender, avatar, county, city, country_of_residence, is_admin, subscription_expires_at, payment_date, subscription_plan')
-        .eq('auth_id', user.id)
-        .limit(1);
+      const { data: profileRows, error: profileError } = await withTimeout(
+        supabase
+          .from('users')
+          .select('id, auth_id, first_name, last_name, email, age, gender, avatar, county, city, country_of_residence, is_admin, subscription_expires_at, payment_date, subscription_plan')
+          .eq('auth_id', user.id)
+          .limit(1)
+      );
 
       const currentProfile = profileRows?.[0] ?? null;
       if (profileError || !currentProfile) throw new Error('Profile not found. Please complete registration.');
       setCurrentUserProfile(currentProfile);
 
       // 3. Connections (only ids + status — no heavy data)
-      const { data: connectionsData } = await (supabase as any)
-        .from('connections')
-        .select('requester_id, recipient_id, status')
-        .or(`requester_id.eq.${currentProfile.id},recipient_id.eq.${currentProfile.id}`);
+      const { data: connectionsData } = await withTimeout(
+        (supabase as any)
+          .from('connections')
+          .select('requester_id, recipient_id, status')
+          .or(`requester_id.eq.${currentProfile.id},recipient_id.eq.${currentProfile.id}`)
+      );
 
       const newConnectionMap = new Map<string, ConnectionStatus>();
       const newAcceptedIds: string[] = [];
@@ -282,8 +287,9 @@ export default function DiscoverScreen() {
       setAcceptedIds(newAcceptedIds);
 
       // 4. First page of members with server-side filters
-      const { data: usersData, error: usersError } = await buildQuery(currentProfile, newAcceptedIds)
-        .range(0, PAGE_SIZE - 1);
+      const { data: usersData, error: usersError } = await withTimeout(
+        buildQuery(currentProfile, newAcceptedIds).range(0, PAGE_SIZE - 1)
+      );
 
       if (usersError) {
         console.error('Supabase query error:', JSON.stringify(usersError));
@@ -834,6 +840,13 @@ const userData = userRows?.[0] ?? null;
         <View style={[commonStyles.centerContent, styles.loadingContainer]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[commonStyles.text, { marginTop: 16 }]} selectable={false}>Finding matches...</Text>
+          {/* Retry button so the user is never permanently stuck */}
+          <Pressable
+            onPress={() => fetchUsers()}
+            style={{ marginTop: 24, paddingVertical: 10, paddingHorizontal: 28, borderRadius: 8, backgroundColor: colors.primary }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Retry</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );

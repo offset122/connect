@@ -7,6 +7,7 @@ import { IconSymbol } from "../../components/IconSymbol";
 import { colors, commonStyles, responsiveStyles, BREAKPOINTS } from "../../styles/commonStyles";
 import { supabase } from "../integrations/supabase/client";
 import PhotoRequestManager from "../../components/PhotoRequestManager";
+import { withTimeout } from '../../utils/withTimeout';
 
 // Helper function to get avatar image from assets
 const getAvatarImage = (filename: string | null | undefined) => {
@@ -77,11 +78,13 @@ export default function ProfileScreen() {
 
       // First try with auth_id (newer schema)
       // Query all columns that might exist - Supabase will only return columns that exist
-      const { data: authIdData, error: authIdError } = await supabase
-        .from('users')
-        .select('*, full_photo, passport_photo')
-        .eq('auth_id', user.id)
-        .maybeSingle();
+      const { data: authIdData, error: authIdError } = await withTimeout(
+        supabase
+          .from('users')
+          .select('*, full_photo, passport_photo')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+      );
 
       // Check for query error (not just null data)
       if (authIdError) {
@@ -386,6 +389,13 @@ export default function ProfileScreen() {
         <View style={[commonStyles.centerContent, { backgroundColor: colors.background }]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[commonStyles.text, { marginTop: 16 }]}>Loading profile...</Text>
+          {/* Always show logout so the user is never fully stuck */}
+          <Pressable
+            onPress={handleLogout}
+            style={{ marginTop: 32, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8, borderWidth: 1, borderColor: colors.error }}
+          >
+            <Text style={{ color: colors.error, fontWeight: '600', fontSize: 15 }}>Logout</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );

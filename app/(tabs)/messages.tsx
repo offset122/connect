@@ -6,6 +6,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import { colors, commonStyles, spacing, borderRadius, shadows, responsiveStyles, BREAKPOINTS } from "@/styles/commonStyles";
 import { supabase } from "@/app/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { withTimeout } from '@/utils/withTimeout';
 
 // Get local avatar image from assets
 const getAvatarImage = (filename: string | null | undefined) => {
@@ -79,19 +80,21 @@ export default function MessagesScreen() {
       setCurrentUserId(user.id);
 
       // Fetch messages where user is either sender or receiver (exclude deleted)
-      const { data: messagesData, error: messagesError } = await (supabase as any)
-        .from('messages')
-        .select(`
-          id,
-          sender_id,
-          receiver_id,
-          content,
-          status,
-          created_at
-        `)
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false });
+      const { data: messagesData, error: messagesError } = await withTimeout(
+        (supabase as any)
+          .from('messages')
+          .select(`
+            id,
+            sender_id,
+            receiver_id,
+            content,
+            status,
+            created_at
+          `)
+          .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+      );
 
       if (messagesError) throw messagesError;
 
@@ -154,10 +157,12 @@ export default function MessagesScreen() {
         return;
       }
 
-      const { data: usersData, error: usersError } = await (supabase as any)
-        .from('users')
-        .select('id, first_name, avatar, gender, last_login, online_status')
-        .in('id', userIds);
+      const { data: usersData, error: usersError } = await withTimeout(
+        (supabase as any)
+          .from('users')
+          .select('id, first_name, avatar, gender, last_login, online_status')
+          .in('id', userIds)
+      );
 
       if (usersError) throw usersError;
 
