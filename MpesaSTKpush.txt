@@ -1,0 +1,9 @@
+Mpesa stk push details
+
+
+STK Push Credentials
+Dear HANCO,
+
+Business Short Code: 5678462
+
+Passkey: ca75ed02940a9746ca8e4061433f44a6574f4545e1ff08bf2a529c342280c849

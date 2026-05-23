@@ -78,6 +78,7 @@ function InitialScreen() {
       <Stack.Screen name="terms-and-conditions" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="child-safety-standards" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="signup" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="phone-verification" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="email-confirmation" options={{ animation: 'fade' }} />
       <Stack.Screen name="login" options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="registration" options={{ animation: 'slide_from_right' }} />

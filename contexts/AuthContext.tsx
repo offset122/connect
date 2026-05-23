@@ -250,7 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        router.replace('/payment-new' as any);
+        // Navigation is handled by the signup screen (→ phone-verification)
         return { success: true, requiresConfirmation: true };
       }
 
@@ -326,6 +326,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
          !APP_CONFIG.FEATURES.REQUIRE_PAYMENT ||
          userData.has_paid === true ||
          userData.payment_status === 'completed';
+
+       // Check phone verification — must verify before paying
+       const isPhoneVerified = (userData as any).phone_verified === true;
+       if (!isPhoneVerified) {
+         console.log('Phone not verified, redirecting to phone-verification');
+         router.replace('/phone-verification' as any);
+         return;
+       }
 
        if (!hasPaid) {
          console.log('Payment not completed, redirecting to payment');

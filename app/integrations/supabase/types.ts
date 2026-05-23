@@ -16,6 +16,7 @@ export interface Database {
           first_name: string;
           username?: string | null;
           phone_number?: string | null;
+          phone_verified?: boolean | null;
           age: number;
           is_admin: boolean;
           has_paid: boolean;
@@ -35,6 +36,7 @@ export interface Database {
           first_name: string;
           username?: string | null;
           phone_number?: string | null;
+          phone_verified?: boolean | null;
           age?: number;
           is_admin: boolean;
           has_paid?: boolean;
@@ -53,6 +55,7 @@ export interface Database {
           first_name?: string;
           username?: string | null;
           phone_number?: string | null;
+          phone_verified?: boolean | null;
           age?: number;
           is_admin?: boolean;
           has_paid?: boolean;

@@ -387,6 +387,7 @@ export default function SignUpScreen() {
   const isLarge = width >= BREAKPOINTS.lg;
   
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('');
@@ -398,8 +399,20 @@ export default function SignUpScreen() {
   const { signUp } = useAuth();
 
   const handleSignUp = async () => {
-    if (!email || !password || !confirmPassword || !country) {
+    if (!email || !phone || !password || !confirmPassword || !country) {
       const message = 'Please fill in all fields';
+      if (Platform.OS === 'web') {
+        window.alert(message);
+      } else {
+        Alert.alert('Error', message);
+      }
+      return;
+    }
+
+    // Basic phone validation — must be at least 7 digits
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 7) {
+      const message = 'Please enter a valid phone number';
       if (Platform.OS === 'web') {
         window.alert(message);
       } else {
@@ -449,6 +462,11 @@ export default function SignUpScreen() {
         await AsyncStorage.setItem('country', country);
       }
 
+      // Save phone so the verification screen can pre-fill it
+      if (phone) {
+        await AsyncStorage.setItem('signupPhone', phone.trim());
+      }
+
       const result = await signUp(email, password);
 
       if (!result.success) {
@@ -461,12 +479,8 @@ export default function SignUpScreen() {
         return;
       }
 
-      const successMessage = 'Account created! Continue to payment.';
-      if (Platform.OS === 'web') {
-        window.alert(successMessage);
-      } else {
-        Alert.alert('Success', successMessage);
-      }
+      // Don't show a success alert — navigate straight to phone verification
+      router.replace('/phone-verification' as any);
     } catch (err) {
       const errorMessage = 'Unexpected error. Try again.';
       if (Platform.OS === 'web') {
@@ -580,6 +594,21 @@ export default function SignUpScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!loading}
+              />
+            </View>
+
+            {/* Phone Number */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 0712 345 678"
+                placeholderTextColor={colors.textSecondary}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                autoComplete="tel"
                 editable={!loading}
               />
             </View>
