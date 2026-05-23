@@ -1349,6 +1349,7 @@ const userData = userRows?.[0] ?? null;
                         targetUserName={user.name}
                         targetUserId={user.id}
                         compact={true}
+                        hideApprovalUI={true}
                       />
                     </View>
                   )}
@@ -1363,6 +1364,7 @@ const userData = userRows?.[0] ?? null;
                         targetUserName={user.name}
                         targetUserId={user.id}
                         compact={true}
+                        hideApprovalUI={true}
                       />
                     </View>
                   )}
@@ -1383,6 +1385,7 @@ const userData = userRows?.[0] ?? null;
                         targetUserName={user.name}
                         targetUserId={user.id}
                         compact={true}
+                        hideApprovalUI={true}
                       />
                     </View>
                   )}

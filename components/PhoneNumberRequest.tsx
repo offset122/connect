@@ -43,12 +43,14 @@ interface PhoneNumberRequestProps {
   targetUserName: string;
   targetUserId: string;
   compact?: boolean;
+  hideApprovalUI?: boolean; // when true, don't show approve/decline/block — handled elsewhere
 }
 
 export default function PhoneNumberRequest({
   targetUserName,
   targetUserId,
   compact = false,
+  hideApprovalUI = false,
 }: PhoneNumberRequestProps) {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -580,8 +582,9 @@ export default function PhoneNumberRequest({
     }
   };
 
-  // Target: pending approval UI
+  // Target: pending approval UI — hidden on cards (Requests tab handles this)
   if (userRole === 'target' && requestStatus === 'pending' && !hasApproved) {
+    if (hideApprovalUI) return null;
     return (
       <View style={styles.approvalContainer}>
         <Text style={styles.promptText}>
