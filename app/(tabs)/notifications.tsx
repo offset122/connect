@@ -8,9 +8,11 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router, useFocusEffect } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { IconSymbol } from '@/components/IconSymbol';
 import { borderRadius, colors, commonStyles, shadows, spacing } from '@/styles/commonStyles';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -90,6 +92,51 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  // ── Check notification permission every time screen is focused ──────────────
+  useFocusEffect(
+    useCallback(() => {
+      // Web doesn't use Expo push permissions
+      if (Platform.OS === 'web') return;
+
+      const checkPermission = async () => {
+        const { status } = await Notifications.getPermissionsAsync();
+
+        if (status === 'granted') {
+          setPermissionDenied(false);
+          return;
+        }
+
+        // Not granted — request it
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+
+        if (newStatus !== 'granted') {
+          setPermissionDenied(true);
+          Alert.alert(
+            'Notifications Disabled',
+            'You won\'t receive alerts for new messages, connections, or matches. Enable notifications in your device settings to stay updated.',
+            [
+              { text: 'Not Now', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  // expo-notifications doesn't have a direct settings opener,
+                  // but Linking can open app settings on both platforms
+                  const { Linking } = require('react-native');
+                  Linking.openSettings();
+                },
+              },
+            ]
+          );
+        } else {
+          setPermissionDenied(false);
+        }
+      };
+
+      checkPermission();
+    }, [])
+  );
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -451,6 +498,23 @@ export default function NotificationsScreen() {
         )}
       </View>
 
+      {/* ── Permission Banner ───────────────────────────────────────────────── */}
+      {permissionDenied && Platform.OS !== 'web' && (
+        <Pressable
+          style={styles.permissionBanner}
+          onPress={() => {
+            const { Linking } = require('react-native');
+            Linking.openSettings();
+          }}
+        >
+          <IconSymbol name="bell.slash.fill" size={16} color="#fff" />
+          <Text style={styles.permissionBannerText}>
+            Notifications are disabled. Tap to enable in Settings.
+          </Text>
+          <IconSymbol name="chevron.right" size={14} color="rgba(255,255,255,0.8)" />
+        </Pressable>
+      )}
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -623,6 +687,22 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  // Permission banner
+  permissionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  permissionBannerText: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   // Groups

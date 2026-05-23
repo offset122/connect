@@ -22,9 +22,17 @@ import safeBack from '../utils/safeRouter';
 import { useWindowDimensions } from 'react-native';
 
 // ─── Advanta SMS config (hardcoded for testing) ──────────────────────────────
-const ADVANTA_APP_KEY = '780c26dc-6932-40b3-8a77-2f2e1352e06d';
+const ADVANTA_APP_KEY = '1fb6caa5c202180f62059b8b2285ecfd';
 const ADVANTA_PARTNER_ID = '14040';
 const ADVANTA_SENDER_ID = "HANNA'S CN";
+//
+
+// $partnerID='14040';//your partner ID
+// $apiKey="1fb6caa5c202180f62059b8b2285ecfd";//API Key
+// $shortcode="HANNA'S CN";//sender ID
+// $url = 'https://quicksms.advantasms.com/api/services/sendsms/';
+
+
 
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
@@ -117,7 +125,13 @@ async function sendOtpSms(phone: string, otp: string): Promise<{ ok: boolean; er
 export default function PhoneVerificationScreen() {
   const { width } = useWindowDimensions();
   const isLarge = width >= BREAKPOINTS.lg;
-  const { user } = useAuth();
+  const { user, setIsVerifyingPhone } = useAuth();
+
+  // Tell AuthContext not to redirect away while we're on this screen
+  useEffect(() => {
+    setIsVerifyingPhone(true);
+    return () => setIsVerifyingPhone(false);
+  }, []);
 
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -209,25 +223,48 @@ export default function PhoneVerificationScreen() {
 
     setLoading(true);
     try {
-      // Persist the verified phone number on the user's Supabase record
+      const normalised = normalisePhone(phone.trim()) ?? phone.trim();
+
+      // Always save to AsyncStorage first — this is the reliable fallback
+      await AsyncStorage.setItem('phoneVerified', 'true');
+      await AsyncStorage.setItem('verifiedPhone', normalised);
+      await AsyncStorage.removeItem('signupPhone');
+
+      // Try to update the DB record if it exists.
+      // If no row exists yet (user hasn't registered), upsert creates a minimal one
+      // so checkUserFlow can read phone_verified = true on next check.
       if (user?.id) {
-        const normalised = normalisePhone(phone.trim()) ?? phone.trim();
-        const { error } = await (supabase as any)
+        const { error: updateError } = await (supabase as any)
           .from('users')
-          .update({
-            phone_number: normalised,
-            phone_verified: true,
-          })
+          .update({ phone_number: normalised, phone_verified: true })
           .eq('auth_id', user.id);
 
-        if (error) {
-          console.warn('Could not save phone to DB (will retry later):', error.message);
-          // Non-fatal — we still let the user proceed; phone is in AsyncStorage
+        // If update affected 0 rows (no profile yet), upsert a minimal record
+        if (updateError) {
+          console.warn('Update failed, trying upsert:', updateError.message);
+        }
+
+        // Always upsert to guarantee the flag is set regardless of whether
+        // the row existed before
+        const { error: upsertError } = await (supabase as any)
+          .from('users')
+          .upsert({
+            auth_id: user.id,
+            email: user.email,
+            phone_number: normalised,
+            phone_verified: true,
+          }, { onConflict: 'auth_id' });
+
+        if (upsertError) {
+          console.warn('Upsert phone_verified failed:', upsertError.message);
+          // Non-fatal — AsyncStorage fallback will handle it
+        } else {
+          console.log('✅ phone_verified saved to DB');
         }
       }
 
-      await AsyncStorage.setItem('phoneVerified', 'true');
-      await AsyncStorage.removeItem('signupPhone');
+      // Allow flow checks again before navigating
+      setIsVerifyingPhone(false);
 
       // Proceed to payment
       router.replace('/payment-new' as any);

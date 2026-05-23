@@ -834,19 +834,33 @@ const userData = userRows?.[0] ?? null;
 
   // --- Rendering ---
 
+  // Show retry only after loading has taken more than 8 seconds — never on first render
+  const [showRetry, setShowRetry] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (loading) {
+      setShowRetry(false);
+      timer = setTimeout(() => setShowRetry(true), 8000);
+    } else {
+      setShowRetry(false);
+    }
+    return () => { if (timer) clearTimeout(timer); };
+  }, [loading]);
+
   if (loading) {
     return (
       <SafeAreaView style={commonStyles.safeArea} edges={['top']}>
         <View style={[commonStyles.centerContent, styles.loadingContainer]}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={[commonStyles.text, { marginTop: 16 }]} selectable={false}>Finding matches...</Text>
-          {/* Retry button so the user is never permanently stuck */}
-          <Pressable
-            onPress={() => fetchUsers()}
-            style={{ marginTop: 24, paddingVertical: 10, paddingHorizontal: 28, borderRadius: 8, backgroundColor: colors.primary }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Retry</Text>
-          </Pressable>
+          {showRetry && (
+            <Pressable
+              onPress={() => fetchUsers()}
+              style={{ marginTop: 24, paddingVertical: 10, paddingHorizontal: 28, borderRadius: 8, backgroundColor: colors.primary }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Retry</Text>
+            </Pressable>
+          )}
         </View>
       </SafeAreaView>
     );

@@ -18,6 +18,7 @@ const HIDDEN_SCREENS = new Set([
   '/reset-password',
   '/email-confirmation',
   '/payment-new',
+  '/phone-verification',
   '/connections',
   '/(tabs)/notifications',
   '/notifications',

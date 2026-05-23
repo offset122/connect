@@ -30,6 +30,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   checkUserFlow: (authUuid?: string, redirectToHome?: boolean) => Promise<void>;
   setIsResettingPassword: (value: boolean) => void;
+  setIsVerifyingPhone: (value: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const isVerifyingPhone = React.useRef(false);
 
   // Ref that always holds the *current* user — used inside the
   // onAuthStateChange closure to avoid a stale-closure over `user` state
@@ -89,6 +91,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Skip auth callback pages
         const isCallback = typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname.includes('auth/callback');
         if (isCallback) {
+          return;
+        }
+
+        // Skip flow check if user is on the phone verification screen —
+        // let them complete verification without being redirected away
+        const isVerifying = typeof window !== 'undefined' && window.location && window.location.pathname && window.location.pathname.includes('phone-verification');
+        if (isVerifying) {
+          console.log('✅ User is on phone-verification, skipping flow check');
           return;
         }
         
@@ -290,6 +300,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentAuthId = authUuid || user?.id;
     if (!currentAuthId) return;
 
+    // Don't interrupt the user while they're on the phone verification screen
+    if (isVerifyingPhone.current) {
+      console.log('✅ Phone verification in progress — skipping flow check');
+      return;
+    }
+
     try {
       // Add timeout for the query
       const queryPromise = supabase
@@ -305,8 +321,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: userData, error: userError } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
       if (userError || !userData) {
-        console.log('No user profile found, redirecting to payment first');
-        router.replace('/payment-new' as any);
+        console.log('No user profile found — new signup, redirecting to phone-verification');
+        router.replace('/phone-verification' as any);
         return;
       }
 
@@ -327,9 +343,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
          userData.has_paid === true ||
          userData.payment_status === 'completed';
 
-       // Check phone verification — must verify before paying
-       const isPhoneVerified = (userData as any).phone_verified === true;
-       if (!isPhoneVerified) {
+       // Phone verification gate — only applies to users who haven't paid yet.
+       // If a user has already paid, they verified their phone before payment,
+       // so we never ask them again on subsequent logins.
+       const isPhoneVerifiedInDb = (userData as any).phone_verified === true;
+
+       // Fallback: check AsyncStorage in case the DB upsert hasn't propagated yet
+       // (can happen on first signup when the users row is brand new)
+       let isPhoneVerified = isPhoneVerifiedInDb;
+       if (!isPhoneVerified && !hasPaid) {
+         try {
+           const asyncVerified = await AsyncStorage.getItem('phoneVerified');
+           if (asyncVerified === 'true') {
+             isPhoneVerified = true;
+             console.log('✅ phone_verified from AsyncStorage fallback');
+             // Sync it back to DB in the background
+             const verifiedPhone = await AsyncStorage.getItem('verifiedPhone');
+             supabase.from('users' as any).upsert({
+               auth_id: currentAuthId,
+               email: userData.email,
+               phone_number: verifiedPhone ?? undefined,
+               phone_verified: true,
+             }, { onConflict: 'auth_id' }).then(({ error }: any) => {
+               if (!error) AsyncStorage.removeItem('phoneVerified');
+             });
+           }
+         } catch { /* ignore storage errors */ }
+       }
+
+       if (!hasPaid && !isPhoneVerified) {
          console.log('Phone not verified, redirecting to phone-verification');
          router.replace('/phone-verification' as any);
          return;
@@ -371,6 +413,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       checkUserFlow,
       setIsResettingPassword,
+      setIsVerifyingPhone: (value: boolean) => { isVerifyingPhone.current = value; },
     }}>
       {children}
     </AuthContext.Provider>
